@@ -1,0 +1,8 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "FLXw3fciMOf6OzKbO5hjG"
+uri = "file://artifacts/gold-trader-pro/assets/images/icon.png"
+type = "image"
+title = "gold trader app icon"

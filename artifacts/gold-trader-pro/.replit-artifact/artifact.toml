@@ -1,0 +1,27 @@
+kind = "mobile"
+previewPath = "/"
+title = "Gold Trader Pro"
+version = "1.0.0"
+id = "artifacts/gold-trader-pro"
+router = "expo-domain"
+
+[[integratedSkills]]
+name = "expo"
+version = "1.0.0"
+
+[[services]]
+ensurePreviewReachable = "/status"
+name = "expo"
+paths = [ "/" ]
+localPort = 24977
+
+[services.development]
+run = "pnpm --filter @workspace/gold-trader-pro run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/gold-trader-pro", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/gold-trader-pro", "run", "serve" ]
+
+[services.env]
+PORT = "24977"
+BASE_PATH = "/"
