@@ -20,12 +20,15 @@ import { Card } from "@/components/Card";
 import { useColors, useRadius } from "@/hooks/useColors";
 import { addEntry, closeEntry, deleteEntry, listEntries, type JournalEntry } from "@/lib/journal";
 import { useMarket } from "@/context/MarketContext";
+import { useT } from "@/context/SettingsContext";
 import { getQuote } from "@/lib/marketData";
 
 export default function JournalScreen() {
   const colors = useColors();
   const radius = useRadius();
   const { symbol } = useMarket();
+  const { t, isRTL } = useT();
+  const dirAlign: "left" | "right" = isRTL ? "right" : "left";
   const insets = useSafeAreaInsets();
   const bottomPad = Platform.OS === "web" ? 100 : insets.bottom + 80;
 
@@ -114,8 +117,8 @@ export default function JournalScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <ScreenHeader
-        title="Trade Journal"
-        subtitle={`${symbol} · ${open.length} open · ${closed.length} closed`}
+        title={t("journal_title")}
+        subtitle={`${symbol} · ${open.length} ${t("open_trades")} · ${closed.length} ${t("closed_trades")}`}
         right={
           <Pressable
             onPress={() => setShowAdd(true)}
@@ -131,14 +134,14 @@ export default function JournalScreen() {
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: bottomPad, gap: 12 }}>
         {/* Stats */}
         <View style={{ flexDirection: "row", gap: 8 }}>
-          <SummaryCard label="Open P/L" value={`${openPnl >= 0 ? "+" : ""}$${openPnl.toFixed(2)}`} tone={openPnl >= 0 ? "bull" : "bear"} />
-          <SummaryCard label="Closed P/L" value={`${closedPnl >= 0 ? "+" : ""}$${closedPnl.toFixed(2)}`} tone={closedPnl >= 0 ? "bull" : "bear"} />
-          <SummaryCard label="Win Rate" value={`${winRate.toFixed(0)}%`} tone={winRate >= 50 ? "bull" : "bear"} />
+          <SummaryCard label={t("open_trades") + " P/L"} value={`${openPnl >= 0 ? "+" : ""}$${openPnl.toFixed(2)}`} tone={openPnl >= 0 ? "bull" : "bear"} />
+          <SummaryCard label={t("closed_trades") + " P/L"} value={`${closedPnl >= 0 ? "+" : ""}$${closedPnl.toFixed(2)}`} tone={closedPnl >= 0 ? "bull" : "bear"} />
+          <SummaryCard label={t("win_rate")} value={`${winRate.toFixed(0)}%`} tone={winRate >= 50 ? "bull" : "bear"} />
         </View>
 
         {open.length > 0 && (
           <View style={{ gap: 8 }}>
-            <Text style={[styles.section, { color: colors.foreground }]}>Open Positions</Text>
+            <Text style={[styles.section, { color: colors.foreground, textAlign: dirAlign }]}>{t("open_trades")}</Text>
             {open.map((e) => {
               const dir = e.side === "LONG" ? 1 : -1;
               const pnl = (livePrice - e.entry) * dir * e.size;
@@ -190,7 +193,7 @@ export default function JournalScreen() {
                       ]}
                     >
                       <Text style={{ color: colors.primaryForeground, fontFamily: "Inter_700Bold", fontSize: 12 }}>
-                        Close @ ${livePrice.toFixed(2)}
+                        {t("close")} @ ${livePrice.toFixed(2)}
                       </Text>
                     </Pressable>
                     <Pressable
@@ -251,7 +254,7 @@ export default function JournalScreen() {
             <View style={{ alignItems: "center", paddingVertical: 40, gap: 10 }}>
               <Feather name="book-open" size={36} color={colors.mutedForeground} />
               <Text style={{ color: colors.foreground, fontFamily: "Inter_700Bold", fontSize: 15 }}>
-                No trades yet
+                {t("no_trades")}
               </Text>
               <Text style={{ color: colors.mutedForeground, fontFamily: "Inter_400Regular", fontSize: 12, textAlign: "center", paddingHorizontal: 30 }}>
                 Tap the + button above to log your first XAUUSD trade. P/L tracks live against the current spot price.
@@ -274,7 +277,7 @@ export default function JournalScreen() {
             ]}
           >
             <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 14 }}>
-              <Text style={[styles.modalTitle, { color: colors.foreground }]}>New Trade</Text>
+              <Text style={[styles.modalTitle, { color: colors.foreground }]}>{t("new_trade")}</Text>
               <Pressable onPress={() => setShowAdd(false)} style={{ marginLeft: "auto" }}>
                 <Feather name="x" size={20} color={colors.mutedForeground} />
               </Pressable>
@@ -312,32 +315,32 @@ export default function JournalScreen() {
               })}
             </View>
 
-            <Field label="Symbol" value={symbol} editable={false} />
+            <Field label={t("symbol_label")} value={symbol} editable={false} />
             <Field
-              label="Entry Price"
+              label={t("entry_price")}
               value={entry}
               onChangeText={setEntry}
               placeholder={livePrice ? livePrice.toFixed(2) : "0.00"}
               keyboardType="decimal-pad"
             />
             <Field
-              label="Size (lots)"
+              label={t("size_lots")}
               value={size}
               onChangeText={setSize}
               placeholder="0.1"
               keyboardType="decimal-pad"
             />
             <Field
-              label="Strategy (optional)"
+              label={t("strategy_optional")}
               value={strategy}
               onChangeText={setStrategy}
               placeholder="e.g. ICT Silver Bullet"
             />
             <Field
-              label="Notes"
+              label={t("notes_label")}
               value={notes}
               onChangeText={setNotes}
-              placeholder="Setup, conditions, etc."
+              placeholder=""
               multiline
             />
 
@@ -349,7 +352,7 @@ export default function JournalScreen() {
               ]}
             >
               <Text style={{ color: colors.primaryForeground, fontFamily: "Inter_700Bold", fontSize: 14, letterSpacing: 0.3 }}>
-                Add Trade
+                {t("add_trade")}
               </Text>
             </Pressable>
           </View>

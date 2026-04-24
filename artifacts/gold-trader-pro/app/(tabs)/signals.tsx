@@ -16,6 +16,7 @@ import { ScreenHeader } from "@/components/Header";
 import { Card } from "@/components/Card";
 import { useColors, useRadius } from "@/hooks/useColors";
 import { useMarket } from "@/context/MarketContext";
+import { useT } from "@/context/SettingsContext";
 import { getCandles, type Interval, type Range } from "@/lib/marketData";
 import { STRATEGIES } from "@/lib/strategies";
 import { ema, rsi, macd, atr, bollinger, stochastic } from "@/lib/indicators";
@@ -24,6 +25,8 @@ export default function SignalsScreen() {
   const colors = useColors();
   const radius = useRadius();
   const { symbol } = useMarket();
+  const { t, isRTL } = useT();
+  const dirAlign: "left" | "right" = isRTL ? "right" : "left";
   const insets = useSafeAreaInsets();
   const bottomPad = Platform.OS === "web" ? 100 : insets.bottom + 80;
 
@@ -119,14 +122,14 @@ export default function SignalsScreen() {
     score == null
       ? "—"
       : score.total >= 50
-      ? "STRONG BUY"
+      ? t("strong_buy")
       : score.total >= 20
-      ? "BUY"
+      ? t("buy")
       : score.total <= -50
-      ? "STRONG SELL"
+      ? t("strong_sell")
       : score.total <= -20
-      ? "SELL"
-      : "NEUTRAL";
+      ? t("sell")
+      : t("neutral");
 
   const scoreTone =
     score == null
@@ -139,7 +142,7 @@ export default function SignalsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <ScreenHeader title="AI Signals" subtitle={`${symbol} · 1H · multi-strategy`} />
+      <ScreenHeader title={t("signals_title")} subtitle={`${symbol} · 1H · multi-strategy`} />
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: bottomPad, gap: 12 }}>
         {/* AI Score panel */}
         <LinearGradient
@@ -148,7 +151,7 @@ export default function SignalsScreen() {
         >
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
             <View>
-              <Text style={[styles.heroSub, { color: colors.gold }]}>AI ENSEMBLE SCORE</Text>
+              <Text style={[styles.heroSub, { color: colors.gold, textAlign: dirAlign }]}>{t("ai_score")}</Text>
               <Text style={[styles.heroBig, { color: scoreTone }]}>
                 {score ? (score.total >= 0 ? "+" : "") + score.total : "—"}
               </Text>
@@ -179,8 +182,8 @@ export default function SignalsScreen() {
 
         {/* Consensus */}
         <Card>
-          <Text style={[styles.title, { color: colors.foreground, marginBottom: 8 }]}>
-            Strategy Consensus
+          <Text style={[styles.title, { color: colors.foreground, marginBottom: 8, textAlign: dirAlign }]}>
+            {t("strategy_consensus")}
           </Text>
           <View style={{ flexDirection: "row", gap: 10 }}>
             <View
@@ -193,7 +196,7 @@ export default function SignalsScreen() {
               <Text style={[styles.consensusBig, { color: colors.bullish }]}>
                 {consensus.long}
               </Text>
-              <Text style={[styles.consensusLabel, { color: colors.mutedForeground }]}>LONG</Text>
+              <Text style={[styles.consensusLabel, { color: colors.mutedForeground }]}>{t("long_label")}</Text>
             </View>
             <View
               style={[
@@ -205,7 +208,7 @@ export default function SignalsScreen() {
               <Text style={[styles.consensusBig, { color: colors.bearish }]}>
                 {consensus.short}
               </Text>
-              <Text style={[styles.consensusLabel, { color: colors.mutedForeground }]}>SHORT</Text>
+              <Text style={[styles.consensusLabel, { color: colors.mutedForeground }]}>{t("short_label")}</Text>
             </View>
             <View
               style={[
@@ -217,19 +220,19 @@ export default function SignalsScreen() {
               <Text style={[styles.consensusBig, { color: colors.gold }]}>
                 {consensus.total}
               </Text>
-              <Text style={[styles.consensusLabel, { color: colors.mutedForeground }]}>SIGNALS</Text>
+              <Text style={[styles.consensusLabel, { color: colors.mutedForeground }]}>{t("signals_count")}</Text>
             </View>
           </View>
         </Card>
 
         {/* Per-strategy latest signal */}
         <Card>
-          <Text style={[styles.title, { color: colors.foreground, marginBottom: 8 }]}>
-            Latest by Strategy
+          <Text style={[styles.title, { color: colors.foreground, marginBottom: 8, textAlign: dirAlign }]}>
+            {t("latest_by_strategy")}
           </Text>
           {allSignals.length === 0 ? (
-            <Text style={{ color: colors.mutedForeground, marginTop: 6 }}>
-              {candlesQ.isLoading ? "Loading..." : "No signals yet — check back soon."}
+            <Text style={{ color: colors.mutedForeground, marginTop: 6, textAlign: dirAlign }}>
+              {candlesQ.isLoading ? t("loading") : t("no_signals")}
             </Text>
           ) : (
             allSignals.map((s, i) => (

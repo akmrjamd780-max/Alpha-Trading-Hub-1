@@ -12,12 +12,14 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
 
 import { ScreenHeader } from "@/components/Header";
-import { PriceChart } from "@/components/PriceChart";
+import { PriceChart, type FVGOverlay, type SignalMarker } from "@/components/PriceChart";
 import { Card } from "@/components/Card";
 import { useColors, useRadius } from "@/hooks/useColors";
 import { useMarket } from "@/context/MarketContext";
+import { useT, useSettings } from "@/context/SettingsContext";
 import {
   getCandles,
   TIMEFRAMES,
@@ -26,20 +28,27 @@ import {
   type Range,
 } from "@/lib/marketData";
 import { ema, rsi, bollinger, pivotPoints } from "@/lib/indicators";
+import { runAIAnalysis } from "@/lib/aiAnalysis";
+import type { QFAResult } from "@/lib/quantumFlow";
 
-const OVERLAYS = [
-  { id: "ema20", label: "EMA 20" },
-  { id: "ema50", label: "EMA 50" },
-  { id: "ema200", label: "EMA 200" },
-  { id: "bb", label: "Bollinger" },
-];
+const OVERLAY_KEYS = ["ema20", "ema50", "ema200", "bb", "fvg", "fib", "warzone", "swings", "signals"] as const;
+type OverlayKey = (typeof OVERLAY_KEYS)[number];
 
 export default function ChartsScreen() {
   const colors = useColors();
   const radius = useRadius();
   const { symbol, setSymbol } = useMarket();
+  const { t, lang, isRTL } = useT();
+  const { settings } = useSettings();
   const [tfIdx, setTfIdx] = useState(2);
-  const [overlays, setOverlays] = useState<string[]>(["ema20", "ema50"]);
+  const [overlays, setOverlays] = useState<OverlayKey[]>([
+    "ema20",
+    "ema50",
+    "fvg",
+    "signals",
+  ]);
+  const [analysis, setAnalysis] = useState<QFAResult | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const bottomPad = Platform.OS === "web" ? 100 : insets.bottom + 80;
@@ -68,12 +77,59 @@ export default function ChartsScreen() {
     return o;
   }, [closes, overlays]);
 
+  const fvgOverlay: FVGOverlay[] = useMemo(() => {
+    if (!analysis || !overlays.includes("fvg")) return [];
+    return analysis.fvgZones.map((z) => ({
+      startIdx: z.botIdx,
+      endIdx: z.topIdx,
+      high: z.high,
+      low: z.low,
+      side: z.side,
+      filled: z.filled,
+    }));
+  }, [analysis, overlays]);
+
+  const fibOverlay = useMemo(() => {
+    if (!analysis || !overlays.includes("fib") || !analysis.fib) return [];
+    return Object.entries(analysis.fib.levels).map(([k, v]) => ({
+      price: v,
+      label: k,
+      color: ["0.500", "0.618"].includes(k) ? colors.gold : colors.mutedForeground,
+    }));
+  }, [analysis, overlays, colors]);
+
+  const warOverlay = analysis && overlays.includes("warzone") ? analysis.warZone : null;
+  const swingHighs = analysis && overlays.includes("swings") ? analysis.swingHighs.map((s) => s.index) : [];
+  const swingLows = analysis && overlays.includes("swings") ? analysis.swingLows.map((s) => s.index) : [];
+
+  const signalMarkers: SignalMarker[] = useMemo(() => {
+    if (!overlays.includes("signals") || !analysis) return [];
+    if (analysis.signal === "NEUTRAL") return [];
+    return [
+      {
+        index: candles.length - 1,
+        side: analysis.signal === "BUY" ? "BUY" : "SELL",
+        label: analysis.signal === "BUY" ? "BUY" : "SELL",
+      },
+    ];
+  }, [analysis, candles.length, overlays]);
+
+  const hLines = useMemo(() => {
+    if (!analysis || analysis.signal === "NEUTRAL") return [];
+    return [
+      { price: analysis.entryPrice, color: colors.gold, label: "Entry" },
+      { price: analysis.stopLoss, color: colors.bearish, label: "SL", dashed: true },
+      { price: analysis.takeProfit1, color: colors.bullish, label: "TP1", dashed: true },
+      { price: analysis.takeProfit2, color: colors.bullish, label: "TP2", dashed: true },
+    ];
+  }, [analysis, colors]);
+
   const rsiVals = useMemo(() => rsi(closes, 14), [closes]);
   const lastRsi = rsiVals[rsiVals.length - 1];
 
   const piv = useMemo(() => {
     if (candles.length < 24) return null;
-    const slice = candles.slice(-Math.max(24, Math.floor(candles.length / 4)), candles.length);
+    const slice = candles.slice(-Math.max(24, Math.floor(candles.length / 4)));
     let h = -Infinity, l = Infinity, c = 0;
     for (const k of slice) {
       if (k.h > h) h = k.h;
@@ -84,20 +140,40 @@ export default function ChartsScreen() {
   }, [candles]);
 
   const chartW = Math.min(width - 32, 720);
-  const chartH = 280;
+  const chartH = 320;
 
-  function toggleOverlay(id: string) {
+  function toggleOverlay(id: OverlayKey) {
     setOverlays((prev) =>
       prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id],
     );
   }
 
+  async function handleAnalyze() {
+    if (candles.length < 60) return;
+    setAnalyzing(true);
+    try {
+      // run on next tick to allow spinner render
+      await new Promise((r) => setTimeout(r, 30));
+      const res = runAIAnalysis(candles, settings, lang);
+      setAnalysis(res);
+      // auto-enable visualisation overlays on first run
+      const next = new Set(overlays);
+      next.add("fvg");
+      next.add("fib");
+      next.add("signals");
+      next.add("warzone");
+      setOverlays(Array.from(next) as OverlayKey[]);
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
+  const dirAlign = isRTL ? "right" : "left";
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <ScreenHeader title="Charts" subtitle={`${symbol} · ${tf.label}`} />
-      <ScrollView
-        contentContainerStyle={{ padding: 16, paddingBottom: bottomPad, gap: 12 }}
-      >
+      <ScreenHeader title={t("chart_title")} subtitle={`${symbol} · ${tf.label} · ${t("drag_to_pan")}`} />
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: bottomPad, gap: 12 }}>
         {/* Symbol picker */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -4 }}>
           <View style={{ flexDirection: "row", gap: 6, paddingHorizontal: 4 }}>
@@ -106,7 +182,10 @@ export default function ChartsScreen() {
               return (
                 <Pressable
                   key={s}
-                  onPress={() => setSymbol(s)}
+                  onPress={() => {
+                    setSymbol(s);
+                    setAnalysis(null);
+                  }}
                   style={[
                     styles.chip,
                     {
@@ -134,12 +213,15 @@ export default function ChartsScreen() {
         {/* Timeframes */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -4 }}>
           <View style={{ flexDirection: "row", gap: 6, paddingHorizontal: 4 }}>
-            {TIMEFRAMES.map((t, i) => {
+            {TIMEFRAMES.map((tt, i) => {
               const active = i === tfIdx;
               return (
                 <Pressable
-                  key={t.label}
-                  onPress={() => setTfIdx(i)}
+                  key={tt.label}
+                  onPress={() => {
+                    setTfIdx(i);
+                    setAnalysis(null);
+                  }}
                   style={[
                     styles.tfChip,
                     {
@@ -156,7 +238,7 @@ export default function ChartsScreen() {
                       fontSize: 11,
                     }}
                   >
-                    {t.label}
+                    {tt.label}
                   </Text>
                 </Pressable>
               );
@@ -164,14 +246,24 @@ export default function ChartsScreen() {
           </View>
         </ScrollView>
 
-        {/* Overlays */}
+        {/* Overlay chips */}
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-          {OVERLAYS.map((o) => {
-            const active = overlays.includes(o.id);
+          {([
+            ["ema20", t("ema20")],
+            ["ema50", t("ema50")],
+            ["ema200", t("ema200")],
+            ["bb", t("bollinger")],
+            ["fvg", t("fvg_overlay")],
+            ["fib", t("fib_overlay")],
+            ["warzone", t("war_zone_overlay")],
+            ["swings", t("swing_overlay")],
+            ["signals", t("signals_overlay")],
+          ] as const).map(([id, label]) => {
+            const active = overlays.includes(id as OverlayKey);
             return (
               <Pressable
-                key={o.id}
-                onPress={() => toggleOverlay(o.id)}
+                key={id}
+                onPress={() => toggleOverlay(id as OverlayKey)}
                 style={[
                   styles.overlayChip,
                   {
@@ -193,12 +285,31 @@ export default function ChartsScreen() {
                     fontSize: 11,
                   }}
                 >
-                  {o.label}
+                  {label}
                 </Text>
               </Pressable>
             );
           })}
         </View>
+
+        {/* AI Analyze button */}
+        <Pressable onPress={handleAnalyze} disabled={analyzing || candles.length < 60}>
+          <LinearGradient
+            colors={["#d4af37", "#b8860b"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={[styles.analyzeBtn, { borderRadius: radius - 4, opacity: analyzing ? 0.7 : 1 }]}
+          >
+            {analyzing ? (
+              <ActivityIndicator color={colors.background} />
+            ) : (
+              <Feather name="cpu" size={16} color={colors.background} />
+            )}
+            <Text style={{ color: colors.background, fontFamily: "Inter_700Bold", fontSize: 14, letterSpacing: 0.4 }}>
+              {analyzing ? t("analyzing") : t("ai_analyze")}
+            </Text>
+          </LinearGradient>
+        </Pressable>
 
         {/* Chart */}
         <Card style={{ paddingHorizontal: 4, paddingVertical: 10 }}>
@@ -208,25 +319,160 @@ export default function ChartsScreen() {
             </View>
           ) : candlesQ.isError ? (
             <View style={{ height: chartH, alignItems: "center", justifyContent: "center" }}>
-              <Text style={{ color: colors.bearish }}>Failed to load chart</Text>
+              <Text style={{ color: colors.bearish }}>{String(candlesQ.error?.message ?? "Failed")}</Text>
             </View>
           ) : (
             <PriceChart
-              candles={candles.slice(-120)}
+              candles={candles}
               width={chartW}
               height={chartH}
-              overlay={overlayLines.map((o) => ({
-                ...o,
-                values: o.values.slice(-120),
-              }))}
+              overlay={overlayLines}
+              markers={signalMarkers}
+              fvgZones={fvgOverlay}
+              warZone={warOverlay}
+              fibLevels={fibOverlay}
+              swingHighs={swingHighs}
+              swingLows={swingLows}
+              hLines={hLines}
+              initialVisibleBars={120}
             />
           )}
         </Card>
 
+        {/* Analysis result panel */}
+        {analysis && (
+          <Card>
+            <View style={[styles.row, { flexDirection: isRTL ? "row-reverse" : "row" }]}>
+              <View
+                style={[
+                  styles.bigSig,
+                  {
+                    backgroundColor:
+                      analysis.signal === "BUY"
+                        ? colors.bullish
+                        : analysis.signal === "SELL"
+                        ? colors.bearish
+                        : colors.muted,
+                    borderRadius: radius - 6,
+                  },
+                ]}
+              >
+                <Text style={styles.bigSigText}>
+                  {analysis.signal === "BUY"
+                    ? t("signal_buy")
+                    : analysis.signal === "SELL"
+                    ? t("signal_sell")
+                    : t("signal_neutral")}
+                </Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.title, { color: colors.foreground, textAlign: dirAlign }]}>
+                  {t("analysis_result")}
+                </Text>
+                <Text style={{ color: colors.gold, fontSize: 13, fontFamily: "Inter_700Bold", textAlign: dirAlign }}>
+                  {t("confidence")}: {analysis.confidence}%
+                </Text>
+              </View>
+            </View>
+
+            {analysis.signal !== "NEUTRAL" && (
+              <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 10, gap: 8 }}>
+                <Stat label={t("entry_price")} value={analysis.entryPrice.toFixed(2)} color={colors.foreground} />
+                <Stat label={t("stop_loss")} value={analysis.stopLoss.toFixed(2)} color={colors.bearish} />
+                <Stat label={t("take_profit_1")} value={analysis.takeProfit1.toFixed(2)} color={colors.bullish} />
+                <Stat label={t("take_profit_2")} value={analysis.takeProfit2.toFixed(2)} color={colors.bullish} />
+              </View>
+            )}
+
+            {analysis.activeTriggers.length > 0 && (
+              <View style={{ marginTop: 12 }}>
+                <Text style={[styles.subTitle, { color: colors.mutedForeground, textAlign: dirAlign }]}>
+                  {t("active_triggers")}
+                </Text>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+                  {analysis.activeTriggers.map((tg, i) => (
+                    <View key={i} style={[styles.tag, { borderColor: colors.gold, borderRadius: radius - 6 }]}>
+                      <Text style={{ color: colors.gold, fontSize: 10, fontFamily: "Inter_700Bold" }}>{tg}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {analysis.explainability.length > 0 && (
+              <View style={{ marginTop: 12 }}>
+                <Text style={[styles.subTitle, { color: colors.mutedForeground, textAlign: dirAlign }]}>
+                  {t("explainability")}
+                </Text>
+                {analysis.explainability.map((e, i) => (
+                  <View key={i} style={[styles.row, { flexDirection: isRTL ? "row-reverse" : "row", marginTop: 4 }]}>
+                    <Feather name="check-circle" size={11} color={colors.bullish} />
+                    <Text
+                      style={{
+                        color: colors.foreground,
+                        fontSize: 12,
+                        fontFamily: "Inter_500Medium",
+                        textAlign: dirAlign,
+                        writingDirection: isRTL ? "rtl" : "ltr",
+                        flex: 1,
+                      }}
+                    >
+                      {e}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {analysis.warningFlags.length > 0 && (
+              <View style={{ marginTop: 12 }}>
+                <Text style={[styles.subTitle, { color: colors.bearish, textAlign: dirAlign }]}>
+                  {t("warning_flags")}
+                </Text>
+                {analysis.warningFlags.map((w, i) => (
+                  <View key={i} style={[styles.row, { flexDirection: isRTL ? "row-reverse" : "row", marginTop: 4 }]}>
+                    <Feather name="alert-triangle" size={11} color={colors.bearish} />
+                    <Text
+                      style={{
+                        color: colors.foreground,
+                        fontSize: 12,
+                        fontFamily: "Inter_500Medium",
+                        textAlign: dirAlign,
+                        writingDirection: isRTL ? "rtl" : "ltr",
+                        flex: 1,
+                      }}
+                    >
+                      {w}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            <View style={{ marginTop: 12, flexDirection: "row", gap: 8 }}>
+              <Stat
+                label={t("war_zone_active")}
+                value={analysis.warZoneActive ? t("yes") : t("no")}
+                color={analysis.warZoneActive ? colors.bearish : colors.bullish}
+              />
+              <Stat label="ADX" value={analysis.adx.toFixed(0)} color={colors.foreground} />
+              <Stat label="ATR" value={analysis.atr.toFixed(2)} color={colors.gold} />
+            </View>
+          </Card>
+        )}
+
         {/* RSI subchart */}
         <Card style={{ paddingHorizontal: 4, paddingVertical: 10 }}>
           <View style={{ paddingHorizontal: 12, marginBottom: 4 }}>
-            <Text style={{ color: colors.mutedForeground, fontSize: 11, fontFamily: "Inter_600SemiBold", letterSpacing: 0.6 }}>
+            <Text
+              style={{
+                color: colors.mutedForeground,
+                fontSize: 11,
+                fontFamily: "Inter_600SemiBold",
+                letterSpacing: 0.6,
+                textAlign: dirAlign,
+              }}
+            >
               RSI(14) · {lastRsi != null ? lastRsi.toFixed(1) : "—"}
             </Text>
           </View>
@@ -236,8 +482,8 @@ export default function ChartsScreen() {
         {/* Pivots */}
         {piv && (
           <Card>
-            <Text style={[styles.cardTitle, { color: colors.foreground }]}>
-              Floor Pivots (last 24 bars)
+            <Text style={[styles.title, { color: colors.foreground, textAlign: dirAlign }]}>
+              {t("pivots_title")}
             </Text>
             <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 10, gap: 8 }}>
               {([
@@ -251,10 +497,7 @@ export default function ChartsScreen() {
               ] as const).map(([label, val, c]) => (
                 <View
                   key={label}
-                  style={[
-                    styles.pivotItem,
-                    { borderColor: colors.border, borderRadius: radius - 6 },
-                  ]}
+                  style={[styles.pivotItem, { borderColor: colors.border, borderRadius: radius - 6 }]}
                 >
                   <Text style={{ color: colors.mutedForeground, fontSize: 10, fontFamily: "Inter_600SemiBold" }}>
                     {label}
@@ -268,6 +511,24 @@ export default function ChartsScreen() {
           </Card>
         )}
       </ScrollView>
+    </View>
+  );
+}
+
+function Stat({ label, value, color }: { label: string; value: string; color: string }) {
+  const colors = useColors();
+  const radius = useRadius();
+  return (
+    <View
+      style={[
+        statStyles.root,
+        { borderColor: colors.border, borderRadius: radius - 6, backgroundColor: colors.cardElevated },
+      ]}
+    >
+      <Text style={{ color: colors.mutedForeground, fontSize: 9, fontFamily: "Inter_600SemiBold", letterSpacing: 0.5, textTransform: "uppercase" }}>
+        {label}
+      </Text>
+      <Text style={{ color, fontSize: 14, fontFamily: "Inter_700Bold", marginTop: 3 }}>{value}</Text>
     </View>
   );
 }
@@ -318,18 +579,8 @@ function RsiSvg({ d, width, height, color }: { d: string; width: number; height:
 }
 
 const styles = StyleSheet.create({
-  chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  tfChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderWidth: StyleSheet.hairlineWidth,
-    minWidth: 42,
-    alignItems: "center",
-  },
+  chip: { paddingHorizontal: 14, paddingVertical: 9, borderWidth: StyleSheet.hairlineWidth },
+  tfChip: { paddingHorizontal: 12, paddingVertical: 7, borderWidth: StyleSheet.hairlineWidth, minWidth: 42, alignItems: "center" },
   overlayChip: {
     flexDirection: "row",
     alignItems: "center",
@@ -338,12 +589,23 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderWidth: StyleSheet.hairlineWidth,
   },
-  cardTitle: { fontSize: 13, fontFamily: "Inter_700Bold", letterSpacing: -0.2 },
-  pivotItem: {
-    minWidth: 70,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderWidth: StyleSheet.hairlineWidth,
+  analyzeBtn: {
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+    flexDirection: "row",
+    justifyContent: "center",
     alignItems: "center",
+    gap: 10,
   },
+  title: { fontSize: 14, fontFamily: "Inter_700Bold", letterSpacing: -0.2 },
+  subTitle: { fontSize: 10, fontFamily: "Inter_700Bold", letterSpacing: 0.7, textTransform: "uppercase" },
+  row: { alignItems: "center", gap: 10 },
+  bigSig: { paddingHorizontal: 14, paddingVertical: 10, alignItems: "center", justifyContent: "center", minWidth: 80 },
+  bigSigText: { color: "#fff", fontSize: 14, fontFamily: "Inter_700Bold", letterSpacing: 0.5 },
+  tag: { paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1 },
+  pivotItem: { minWidth: 70, paddingHorizontal: 12, paddingVertical: 8, borderWidth: StyleSheet.hairlineWidth, alignItems: "center" },
+});
+
+const statStyles = StyleSheet.create({
+  root: { flex: 1, padding: 10, borderWidth: StyleSheet.hairlineWidth, minWidth: 80 },
 });

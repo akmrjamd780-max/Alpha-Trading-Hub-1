@@ -18,6 +18,7 @@ import { Card } from "@/components/Card";
 import { PriceChart } from "@/components/PriceChart";
 import { useColors, useRadius } from "@/hooks/useColors";
 import { useMarket } from "@/context/MarketContext";
+import { useT } from "@/context/SettingsContext";
 import { getCandles, type Interval, type Range, TIMEFRAMES } from "@/lib/marketData";
 import { STRATEGIES, type Strategy } from "@/lib/strategies";
 import { backtest } from "@/lib/backtester";
@@ -26,6 +27,8 @@ export default function StrategiesScreen() {
   const colors = useColors();
   const radius = useRadius();
   const { symbol } = useMarket();
+  const { t, isRTL } = useT();
+  const dirAlign: "left" | "right" = isRTL ? "right" : "left";
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const bottomPad = Platform.OS === "web" ? 100 : insets.bottom + 80;
@@ -51,7 +54,7 @@ export default function StrategiesScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <ScreenHeader title="Strategies" subtitle={`${symbol} · ${tf.label} · ${selected.name}`} />
+      <ScreenHeader title={t("strategies_title")} subtitle={`${symbol} · ${tf.label} · ${selected.name}`} />
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: bottomPad, gap: 12 }}>
         {/* Strategy list */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -4 }}>
@@ -180,18 +183,18 @@ export default function StrategiesScreen() {
         {/* Backtest results */}
         {result?.bt && (
           <Card>
-            <Text style={[styles.title, { color: colors.foreground, marginBottom: 8 }]}>
-              Backtest · {tf.label} · {symbol}
+            <Text style={[styles.title, { color: colors.foreground, marginBottom: 8, textAlign: dirAlign }]}>
+              {t("backtest")} · {tf.label} · {symbol}
             </Text>
             <View style={styles.btGrid}>
-              <BtStat label="Total Return" value={`${result.bt.totalReturnPct.toFixed(2)}%`} tone={result.bt.totalReturnPct >= 0 ? "bull" : "bear"} />
-              <BtStat label="Win Rate" value={`${result.bt.winRate.toFixed(1)}%`} tone={result.bt.winRate >= 50 ? "bull" : "bear"} />
-              <BtStat label="Trades" value={`${result.bt.trades.length}`} />
-              <BtStat label="Profit Factor" value={result.bt.profitFactor === Infinity ? "∞" : result.bt.profitFactor.toFixed(2)} tone={result.bt.profitFactor >= 1 ? "bull" : "bear"} />
-              <BtStat label="Max DD" value={`${result.bt.maxDrawdownPct.toFixed(2)}%`} tone="bear" />
-              <BtStat label="Expectancy" value={`${result.bt.expectancyPct.toFixed(2)}%`} tone={result.bt.expectancyPct >= 0 ? "bull" : "bear"} />
-              <BtStat label="Avg Win" value={`${result.bt.avgWinPct.toFixed(2)}%`} tone="bull" />
-              <BtStat label="Avg Loss" value={`${result.bt.avgLossPct.toFixed(2)}%`} tone="bear" />
+              <BtStat label={t("total_return")} value={`${result.bt.totalReturnPct.toFixed(2)}%`} tone={result.bt.totalReturnPct >= 0 ? "bull" : "bear"} />
+              <BtStat label={t("win_rate")} value={`${result.bt.winRate.toFixed(1)}%`} tone={result.bt.winRate >= 50 ? "bull" : "bear"} />
+              <BtStat label={t("trades")} value={`${result.bt.trades.length}`} />
+              <BtStat label={t("profit_factor")} value={result.bt.profitFactor === Infinity ? "∞" : result.bt.profitFactor.toFixed(2)} tone={result.bt.profitFactor >= 1 ? "bull" : "bear"} />
+              <BtStat label={t("max_dd")} value={`${result.bt.maxDrawdownPct.toFixed(2)}%`} tone="bear" />
+              <BtStat label={t("expectancy")} value={`${result.bt.expectancyPct.toFixed(2)}%`} tone={result.bt.expectancyPct >= 0 ? "bull" : "bear"} />
+              <BtStat label={t("avg_win")} value={`${result.bt.avgWinPct.toFixed(2)}%`} tone="bull" />
+              <BtStat label={t("avg_loss")} value={`${result.bt.avgLossPct.toFixed(2)}%`} tone="bear" />
             </View>
           </Card>
         )}
@@ -199,8 +202,8 @@ export default function StrategiesScreen() {
         {/* Recent signals list */}
         {result && result.signals.length > 0 && (
           <Card>
-            <Text style={[styles.title, { color: colors.foreground, marginBottom: 8 }]}>
-              Recent Signals
+            <Text style={[styles.title, { color: colors.foreground, marginBottom: 8, textAlign: dirAlign }]}>
+              {t("recent_signals")}
             </Text>
             {result.signals.slice(-8).reverse().map((s, i) => (
               <View

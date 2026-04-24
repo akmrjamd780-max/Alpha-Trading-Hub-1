@@ -13,20 +13,23 @@ import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { View } from "react-native";
+import { I18nManager, View } from "react-native";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { MarketProvider } from "@/context/MarketContext";
+import { SettingsProvider } from "@/context/SettingsContext";
 import colors from "@/constants/colors";
 
 SplashScreen.preventAutoHideAsync();
+
+I18nManager.allowRTL(true);
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 30_000,
       refetchOnWindowFocus: false,
-      retry: 1,
+      retry: 2,
     },
   },
 });
@@ -63,18 +66,22 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <ErrorBoundary>
-        <QueryClientProvider client={queryClient}>
-          <MarketProvider>
-            <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.light.background }}>
-              <KeyboardProvider>
-                <View style={{ flex: 1, backgroundColor: colors.light.background }}>
-                  <StatusBar style="light" />
-                  <RootLayoutNav />
-                </View>
-              </KeyboardProvider>
-            </GestureHandlerRootView>
-          </MarketProvider>
-        </QueryClientProvider>
+        <SettingsProvider>
+          <QueryClientProvider client={queryClient}>
+            <MarketProvider>
+              <GestureHandlerRootView
+                style={{ flex: 1, backgroundColor: colors.light.background }}
+              >
+                <KeyboardProvider>
+                  <View style={{ flex: 1, backgroundColor: colors.light.background }}>
+                    <StatusBar style="light" />
+                    <RootLayoutNav />
+                  </View>
+                </KeyboardProvider>
+              </GestureHandlerRootView>
+            </MarketProvider>
+          </QueryClientProvider>
+        </SettingsProvider>
       </ErrorBoundary>
     </SafeAreaProvider>
   );

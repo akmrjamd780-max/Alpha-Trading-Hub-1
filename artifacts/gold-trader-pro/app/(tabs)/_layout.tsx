@@ -2,14 +2,14 @@ import { BlurView } from "expo-blur";
 import { Tabs } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import React from "react";
-import { Platform, StyleSheet, View, useColorScheme } from "react-native";
+import { Platform, StyleSheet, View } from "react-native";
 
 import { useColors } from "@/hooks/useColors";
+import { useT } from "@/context/SettingsContext";
 
 export default function TabLayout() {
   const colors = useColors();
-  const colorScheme = useColorScheme();
-  const isDark = true;
+  const { t } = useT();
   const isIOS = Platform.OS === "ios";
   const isWeb = Platform.OS === "web";
 
@@ -34,25 +34,16 @@ export default function TabLayout() {
         },
         tabBarBackground: () =>
           isIOS ? (
-            <BlurView
-              intensity={80}
-              tint={isDark ? "dark" : "light"}
-              style={StyleSheet.absoluteFill}
-            />
+            <BlurView intensity={80} tint="dark" style={StyleSheet.absoluteFill} />
           ) : (
-            <View
-              style={[
-                StyleSheet.absoluteFill,
-                { backgroundColor: colors.card },
-              ]}
-            />
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.card }]} />
           ),
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
-          title: "Markets",
+          title: t("tab_markets"),
           tabBarIcon: ({ color, size }) => (
             <Feather name="grid" size={size - 2} color={color} />
           ),
@@ -61,7 +52,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="charts"
         options={{
-          title: "Charts",
+          title: t("tab_charts"),
           tabBarIcon: ({ color, size }) => (
             <Feather name="bar-chart-2" size={size - 2} color={color} />
           ),
@@ -70,7 +61,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="strategies"
         options={{
-          title: "Strategies",
+          title: t("tab_strategies"),
           tabBarIcon: ({ color, size }) => (
             <Feather name="cpu" size={size - 2} color={color} />
           ),
@@ -79,7 +70,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="signals"
         options={{
-          title: "AI Signals",
+          title: t("tab_signals"),
           tabBarIcon: ({ color, size }) => (
             <Feather name="zap" size={size - 2} color={color} />
           ),
@@ -88,9 +79,18 @@ export default function TabLayout() {
       <Tabs.Screen
         name="journal"
         options={{
-          title: "Journal",
+          title: t("tab_journal"),
           tabBarIcon: ({ color, size }) => (
             <Feather name="book-open" size={size - 2} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="settings"
+        options={{
+          title: t("tab_settings"),
+          tabBarIcon: ({ color, size }) => (
+            <Feather name="settings" size={size - 2} color={color} />
           ),
         }}
       />
