@@ -26,6 +26,7 @@ import { useT, useSettings } from "@/context/SettingsContext";
 import { getMulti, getQuote, getCandles, WATCHLIST } from "@/lib/marketData";
 import { ema, rsi, macd, atr } from "@/lib/indicators";
 import { runAIAnalysis } from "@/lib/aiAnalysis";
+import { runAdvancedAnalysis } from "@/lib/advancedAnalysis";
 
 export default function MarketsScreen() {
   const colors = useColors();
@@ -85,9 +86,12 @@ export default function MarketsScreen() {
   const macdVal = m.hist[last];
   const atrVal = a14[last];
 
-  // Live AI quick signal via Quantum Flow
+  // Live AI quick signal via Quantum Flow + advanced analysis
   const liveAi = goldCandles.data && goldCandles.data.candles.length > 200
     ? runAIAnalysis(goldCandles.data.candles, settings, lang)
+    : null;
+  const advanced = goldCandles.data && goldCandles.data.candles.length > 200 && settings.enableAiAnalysis
+    ? runAdvancedAnalysis(goldCandles.data.candles, settings, lang)
     : null;
 
   const goldSpark = closes.slice(-40);
@@ -191,8 +195,8 @@ export default function MarketsScreen() {
               <Text style={[styles.linkText, { color: colors.gold }]}>{t("open")}</Text>
             </Pressable>
           </View>
-          {liveAi && liveAi.signal !== "NEUTRAL" ? (
-            <View style={{ marginTop: 10, gap: 6 }}>
+          {liveAi && liveAi.signal !== "NEUTRAL" && advanced ? (
+            <View style={{ marginTop: 10, gap: 8 }}>
               <View style={[styles.row, { flexDirection: isRTL ? "row-reverse" : "row" }]}>
                 <View
                   style={[
@@ -210,8 +214,41 @@ export default function MarketsScreen() {
                 <Text style={{ color: colors.foreground, fontFamily: "Inter_700Bold", fontSize: 16 }}>
                   ${liveAi.entryPrice.toFixed(2)}
                 </Text>
+                <Text
+                  style={{
+                    color:
+                      advanced.rating === "A+" || advanced.rating === "A"
+                        ? colors.bullish
+                        : advanced.rating === "B"
+                          ? colors.gold
+                          : advanced.rating === "C"
+                            ? colors.warning
+                            : colors.bearish,
+                    fontSize: 14,
+                    fontFamily: "Inter_700Bold",
+                  }}
+                >
+                  {advanced.rating}
+                </Text>
                 <Text style={{ color: colors.gold, fontSize: 12, fontFamily: "Inter_700Bold" }}>
                   {t("confidence")}: {liveAi.confidence}%
+                </Text>
+              </View>
+              <View style={{ flexDirection: isRTL ? "row-reverse" : "row", gap: 12, flexWrap: "wrap" }}>
+                <Text style={{ color: colors.bearish, fontSize: 11, fontFamily: "Inter_700Bold" }}>
+                  SL ${liveAi.stopLoss.toFixed(2)}
+                </Text>
+                <Text style={{ color: colors.bullish, fontSize: 11, fontFamily: "Inter_700Bold" }}>
+                  TP1 ${advanced.tp1.toFixed(2)}
+                </Text>
+                <Text style={{ color: colors.bullish, fontSize: 11, fontFamily: "Inter_700Bold" }}>
+                  TP2 ${advanced.tp2.toFixed(2)}
+                </Text>
+                <Text style={{ color: colors.bullish, fontSize: 11, fontFamily: "Inter_700Bold" }}>
+                  TP3 ${advanced.tp3.toFixed(2)}
+                </Text>
+                <Text style={{ color: colors.gold, fontSize: 11, fontFamily: "Inter_700Bold" }}>
+                  R:R {advanced.riskReward.toFixed(2)}
                 </Text>
               </View>
               <Text

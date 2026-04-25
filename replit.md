@@ -1,5 +1,14 @@
 # Workspace
 
+## Gold Trader Pro — recent additions (Apr 2026)
+- **Trading mode profiles**: scalp / intraday / swing / position / custom — one-tap preset bundles (`lib/profiles.ts`)
+- **Themes**: dark / medium / light, fully wired through `useColors` + `SettingsContext.theme` (`constants/colors.ts`)
+- **Signal Style** (instant/pending/confirmed/conservative/aggressive) and **Risk Level** (low/medium/high) pickers in settings
+- **General toggles** section: AI analysis, visual analysis, recommendations, drawings, notifications
+- **Advanced Analysis layer** (`lib/advancedAnalysis.ts`) producing TP1/TP2/TP3 with reversal probabilities, confirm/cancel conditions, S/R lists, demand/supply/liquidity zones, 13-row Decision Factor Board, candle patterns (`lib/patterns.ts`), pending-order suggestion at Fib golden zone, and A+/A/B/C/D rating
+- **AnalysisCard** (`components/AnalysisCard.tsx`) renders the full structured analysis on Signals screen and a compact summary on Markets home
+- **Settings storage key bumped** to `gtp_settings_v3`
+
 ## Overview
 
 pnpm workspace monorepo using TypeScript. Each package manages its own dependencies.

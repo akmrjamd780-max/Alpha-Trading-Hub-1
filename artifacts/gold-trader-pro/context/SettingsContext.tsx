@@ -10,15 +10,36 @@ import React, {
 import { I18nManager } from "react-native";
 
 import type { Lang } from "@/lib/i18n";
+import type { ThemeName } from "@/constants/colors";
+import {
+  TRADING_MODE_PRESETS,
+  type TradingMode,
+  type SignalStyle,
+  type RiskLevel,
+} from "@/lib/profiles";
 
 export type EngineMode = "fast" | "balanced" | "slow";
 export type SLMethod = "structural" | "atr" | "fib";
 export type TPMethod = "structural" | "fib" | "atr";
 export type SessionFilter = "all" | "asia" | "london" | "ny" | "london_ny";
 export type ConfluenceMode = "any" | "majority" | "all";
+export type { TradingMode, SignalStyle, RiskLevel };
 
 export interface Settings {
   lang: Lang;
+  theme: ThemeName;
+
+  // Profile + style
+  tradingMode: TradingMode;
+  signalStyle: SignalStyle;
+  riskLevel: RiskLevel;
+
+  // Visual / behaviour toggles
+  showRecommendations: boolean;
+  showDrawings: boolean;
+  enableNotifications: boolean;
+  enableAiAnalysis: boolean;
+  enableVisualAnalysis: boolean;
 
   // Market structure
   swingLength: number;
@@ -93,6 +114,17 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   lang: "ar",
+  theme: "dark",
+
+  tradingMode: "intraday",
+  signalStyle: "confirmed",
+  riskLevel: "medium",
+
+  showRecommendations: true,
+  showDrawings: true,
+  enableNotifications: true,
+  enableAiAnalysis: true,
+  enableVisualAnalysis: true,
 
   swingLength: 5,
   enableWall: true,
@@ -161,10 +193,12 @@ interface Ctx {
   update: (patch: Partial<Settings>) => void;
   reset: () => void;
   setLang: (l: Lang) => void;
+  setTheme: (theme: ThemeName) => void;
+  applyTradingMode: (mode: TradingMode) => void;
 }
 
 const SettingsCtx = createContext<Ctx | null>(null);
-const KEY = "gtp_settings_v2";
+const KEY = "gtp_settings_v3";
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
@@ -204,9 +238,21 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setSettings((prev) => ({ ...prev, lang: l }));
   }, []);
 
+  const setTheme = useCallback((theme: ThemeName) => {
+    setSettings((prev) => ({ ...prev, theme }));
+  }, []);
+
+  const applyTradingMode = useCallback((mode: TradingMode) => {
+    setSettings((prev) => {
+      if (mode === "custom") return { ...prev, tradingMode: mode };
+      const preset = TRADING_MODE_PRESETS[mode];
+      return { ...prev, ...preset, tradingMode: mode };
+    });
+  }, []);
+
   const value = useMemo<Ctx>(
-    () => ({ settings, ready, update, reset, setLang }),
-    [settings, ready, update, reset, setLang],
+    () => ({ settings, ready, update, reset, setLang, setTheme, applyTradingMode }),
+    [settings, ready, update, reset, setLang, setTheme, applyTradingMode],
   );
 
   return <SettingsCtx.Provider value={value}>{children}</SettingsCtx.Provider>;

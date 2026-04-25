@@ -14,18 +14,21 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ScreenHeader } from "@/components/Header";
 import { Card } from "@/components/Card";
+import { AnalysisCard } from "@/components/AnalysisCard";
 import { useColors, useRadius } from "@/hooks/useColors";
 import { useMarket } from "@/context/MarketContext";
-import { useT } from "@/context/SettingsContext";
+import { useT, useSettings } from "@/context/SettingsContext";
 import { getCandles, type Interval, type Range } from "@/lib/marketData";
 import { STRATEGIES } from "@/lib/strategies";
 import { ema, rsi, macd, atr, bollinger, stochastic } from "@/lib/indicators";
+import { runAdvancedAnalysis } from "@/lib/advancedAnalysis";
 
 export default function SignalsScreen() {
   const colors = useColors();
   const radius = useRadius();
   const { symbol } = useMarket();
-  const { t, isRTL } = useT();
+  const { t, isRTL, lang } = useT();
+  const { settings } = useSettings();
   const dirAlign: "left" | "right" = isRTL ? "right" : "left";
   const insets = useSafeAreaInsets();
   const bottomPad = Platform.OS === "web" ? 100 : insets.bottom + 80;
@@ -38,6 +41,11 @@ export default function SignalsScreen() {
 
   const candles = candlesQ.data?.candles ?? [];
   const closes = candles.map((c) => c.c);
+
+  const advanced = useMemo(() => {
+    if (candles.length < 200 || !settings.enableAiAnalysis) return null;
+    return runAdvancedAnalysis(candles, settings, lang);
+  }, [candles, settings, lang]);
 
   const score = useMemo(() => {
     if (candles.length < 200) return null;
@@ -144,6 +152,9 @@ export default function SignalsScreen() {
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <ScreenHeader title={t("signals_title")} subtitle={`${symbol} · 1H · multi-strategy`} />
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: bottomPad, gap: 12 }}>
+        {/* Advanced AI analysis (top priority) */}
+        {advanced && <AnalysisCard analysis={advanced} symbol={symbol} />}
+
         {/* AI Score panel */}
         <LinearGradient
           colors={["#1a1505", "#13182966"]}

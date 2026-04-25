@@ -2,6 +2,93 @@ export type Lang = "ar" | "en";
 
 type Dict = Record<string, { ar: string; en: string }>;
 
+const ADV: Dict = {
+  // Theme
+  theme: { ar: "الثيم", en: "Theme" },
+  theme_dark: { ar: "داكن", en: "Dark" },
+  theme_medium: { ar: "متوسط", en: "Medium" },
+  theme_light: { ar: "فاتح", en: "Light" },
+
+  // Trading mode profile
+  trading_mode: { ar: "نمط التداول", en: "Trading Mode" },
+  mode_scalp: { ar: "سكالب", en: "Scalp" },
+  mode_intraday: { ar: "يومي", en: "Intraday" },
+  mode_swing: { ar: "سوينج", en: "Swing" },
+  mode_position: { ar: "مركزي", en: "Position" },
+  mode_custom: { ar: "مخصص", en: "Custom" },
+  apply_mode: { ar: "تطبيق", en: "Apply" },
+  mode_active: { ar: "نشط", en: "Active" },
+
+  // Signal style
+  signal_style: { ar: "نمط الإشارة", en: "Signal Style" },
+  style_instant: { ar: "فوري", en: "Instant" },
+  style_pending: { ar: "معلّق", en: "Pending" },
+  style_confirmed: { ar: "تأكيدي", en: "Confirmed" },
+  style_conservative: { ar: "محافظ", en: "Conservative" },
+  style_aggressive: { ar: "هجومي", en: "Aggressive" },
+
+  // Risk
+  risk_level: { ar: "مستوى المخاطرة", en: "Risk Level" },
+  risk_low: { ar: "منخفض", en: "Low" },
+  risk_medium: { ar: "متوسط", en: "Medium" },
+  risk_high: { ar: "عالٍ", en: "High" },
+
+  // General toggles
+  show_recommendations: { ar: "عرض التوصيات", en: "Show recommendations" },
+  show_drawings: { ar: "عرض الرسومات", en: "Show drawings" },
+  enable_notifications: { ar: "تشغيل الإشعارات", en: "Enable notifications" },
+  enable_ai_analysis: { ar: "تشغيل التحليل الذكي", en: "Enable AI analysis" },
+  enable_visual_analysis: { ar: "تشغيل التحليل البصري", en: "Enable visual analysis" },
+
+  // Advanced analysis
+  trade_plan: { ar: "خطة الصفقة", en: "Trade Plan" },
+  pending_order: { ar: "أمر معلّق", en: "Pending Order" },
+  buy_limit: { ar: "شراء معلّق منخفض", en: "Buy Limit" },
+  sell_limit: { ar: "بيع معلّق مرتفع", en: "Sell Limit" },
+  buy_stop: { ar: "شراء معلّق فوق", en: "Buy Stop" },
+  sell_stop: { ar: "بيع معلّق تحت", en: "Sell Stop" },
+  entry_label: { ar: "الدخول", en: "Entry" },
+  sl_label: { ar: "وقف الخسارة", en: "Stop Loss" },
+  tp1_label: { ar: "الهدف 1", en: "Target 1" },
+  tp2_label: { ar: "الهدف 2", en: "Target 2" },
+  tp3_label: { ar: "الهدف 3", en: "Target 3" },
+  rr_label: { ar: "المخاطرة:العائد", en: "Risk:Reward" },
+  reversal_prob: { ar: "احتمال الانعكاس", en: "Reversal Probability" },
+  rating_label: { ar: "تقييم الصفقة", en: "Trade Rating" },
+  quality_label: { ar: "الجودة", en: "Quality" },
+  confirm_conditions: { ar: "شروط التأكيد", en: "Confirmation Conditions" },
+  cancel_conditions: { ar: "شروط الإلغاء", en: "Cancellation Conditions" },
+  reasons_label: { ar: "أسباب التوصية", en: "Reasons" },
+  important_notes: { ar: "ملاحظات مهمة", en: "Important Notes" },
+  detected_patterns: { ar: "النماذج المكتشفة", en: "Detected Patterns" },
+  no_patterns: { ar: "لا توجد نماذج بارزة الآن", en: "No notable patterns now" },
+  support_levels: { ar: "مستويات الدعم", en: "Support Levels" },
+  resistance_levels: { ar: "مستويات المقاومة", en: "Resistance Levels" },
+  demand_zones: { ar: "مناطق الطلب", en: "Demand Zones" },
+  supply_zones: { ar: "مناطق العرض", en: "Supply Zones" },
+  liquidity_zones: { ar: "مناطق السيولة", en: "Liquidity Zones" },
+
+  // Factor board
+  factor_board: { ar: "لوحة عوامل القرار", en: "Decision Factor Board" },
+  factor_pos: { ar: "إيجابي", en: "Positive" },
+  factor_neg: { ar: "سلبي", en: "Negative" },
+  factor_neu: { ar: "محايد", en: "Neutral" },
+  impact_high: { ar: "عالٍ", en: "High" },
+  impact_med: { ar: "متوسط", en: "Med" },
+  impact_low: { ar: "منخفض", en: "Low" },
+  factor_score: { ar: "إجمالي العوامل", en: "Composite Score" },
+
+  // Misc
+  visual_appearance: { ar: "المظهر", en: "Appearance" },
+  trading_profile: { ar: "ملف التداول", en: "Trading Profile" },
+  general_toggles: { ar: "الخيارات العامة", en: "General Toggles" },
+  pending_at: { ar: "عند السعر", en: "at price" },
+  no_zones: { ar: "لا توجد مناطق", en: "No zones" },
+  view_full_analysis: { ar: "عرض التحليل الكامل", en: "View full analysis" },
+  ai_summary: { ar: "ملخص الذكاء الاصطناعي", en: "AI Summary" },
+  full_analysis: { ar: "التحليل الكامل", en: "Full Analysis" },
+};
+
 export const T: Dict = {
   // Header / brand
   app_title: { ar: "Gold Trader Pro", en: "Gold Trader Pro" },
@@ -218,6 +305,7 @@ export const T: Dict = {
     ar: "أي تغيير هنا يؤثر فوراً على نتائج التحليل في الشارت.",
     en: "Any change here updates analysis results in Charts immediately.",
   },
+  ...ADV,
 };
 
 export function tr(key: keyof typeof T, lang: Lang): string {

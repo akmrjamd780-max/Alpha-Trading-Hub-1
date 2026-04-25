@@ -25,13 +25,18 @@ import {
   type TPMethod,
   type SessionFilter,
   type ConfluenceMode,
+  type TradingMode,
+  type SignalStyle,
+  type RiskLevel,
 } from "@/context/SettingsContext";
+import type { ThemeName } from "@/constants/colors";
+import { TRADING_MODE_DESC } from "@/lib/profiles";
 
 export default function SettingsScreen() {
   const colors = useColors();
   const radius = useRadius();
   const { t, isRTL, lang } = useT();
-  const { settings, update, reset, setLang } = useSettings();
+  const { settings, update, reset, setLang, setTheme, applyTradingMode } = useSettings();
   const insets = useSafeAreaInsets();
   const bottomPad = Platform.OS === "web" ? 100 : insets.bottom + 80;
   const dirAlign: "left" | "right" = isRTL ? "right" : "left";
@@ -131,6 +136,109 @@ export default function SettingsScreen() {
               );
             })}
           </View>
+        </Section>
+
+        {/* Appearance / theme */}
+        <Section title={t("visual_appearance")} dirAlign={dirAlign}>
+          <Text style={[styles.subLabel, { color: colors.mutedForeground, textAlign: dirAlign }]}>
+            {t("theme")}
+          </Text>
+          <View style={{ flexDirection: "row", gap: 6, marginTop: 6 }}>
+            {(["dark", "medium", "light"] as ThemeName[]).map((thm) => (
+              <ModeBtn
+                key={thm}
+                active={settings.theme === thm}
+                label={thm === "dark" ? t("theme_dark") : thm === "medium" ? t("theme_medium") : t("theme_light")}
+                onPress={() => setTheme(thm)}
+              />
+            ))}
+          </View>
+        </Section>
+
+        {/* Trading profile */}
+        <Section title={t("trading_profile")} dirAlign={dirAlign}>
+          <Text style={[styles.subLabel, { color: colors.mutedForeground, textAlign: dirAlign }]}>
+            {t("trading_mode")}
+          </Text>
+          <View style={{ flexDirection: "row", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+            {(["scalp", "intraday", "swing", "position", "custom"] as TradingMode[]).map((m) => (
+              <ModeBtn
+                key={m}
+                active={settings.tradingMode === m}
+                label={
+                  m === "scalp"
+                    ? t("mode_scalp")
+                    : m === "intraday"
+                      ? t("mode_intraday")
+                      : m === "swing"
+                        ? t("mode_swing")
+                        : m === "position"
+                          ? t("mode_position")
+                          : t("mode_custom")
+                }
+                onPress={() => applyTradingMode(m)}
+              />
+            ))}
+          </View>
+          <Text
+            style={{
+              color: colors.mutedForeground,
+              fontSize: 11,
+              marginTop: 8,
+              textAlign: dirAlign,
+              writingDirection: isRTL ? "rtl" : "ltr",
+              lineHeight: 16,
+            }}
+          >
+            {TRADING_MODE_DESC[settings.tradingMode][lang]}
+          </Text>
+
+          <Text style={[styles.subLabel, { color: colors.mutedForeground, textAlign: dirAlign, marginTop: 14 }]}>
+            {t("signal_style")}
+          </Text>
+          <View style={{ flexDirection: "row", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+            {(["instant", "pending", "confirmed", "conservative", "aggressive"] as SignalStyle[]).map((st) => (
+              <ModeBtn
+                key={st}
+                active={settings.signalStyle === st}
+                label={
+                  st === "instant"
+                    ? t("style_instant")
+                    : st === "pending"
+                      ? t("style_pending")
+                      : st === "confirmed"
+                        ? t("style_confirmed")
+                        : st === "conservative"
+                          ? t("style_conservative")
+                          : t("style_aggressive")
+                }
+                onPress={() => update({ signalStyle: st })}
+              />
+            ))}
+          </View>
+
+          <Text style={[styles.subLabel, { color: colors.mutedForeground, textAlign: dirAlign, marginTop: 14 }]}>
+            {t("risk_level")}
+          </Text>
+          <View style={{ flexDirection: "row", gap: 6, marginTop: 6 }}>
+            {(["low", "medium", "high"] as RiskLevel[]).map((rl) => (
+              <ModeBtn
+                key={rl}
+                active={settings.riskLevel === rl}
+                label={rl === "low" ? t("risk_low") : rl === "medium" ? t("risk_medium") : t("risk_high")}
+                onPress={() => update({ riskLevel: rl })}
+              />
+            ))}
+          </View>
+        </Section>
+
+        {/* General toggles */}
+        <Section title={t("general_toggles")} dirAlign={dirAlign}>
+          <SwitchRow label={t("enable_ai_analysis")} value={settings.enableAiAnalysis} onChange={(v) => update({ enableAiAnalysis: v })} dirAlign={dirAlign} />
+          <SwitchRow label={t("enable_visual_analysis")} value={settings.enableVisualAnalysis} onChange={(v) => update({ enableVisualAnalysis: v })} dirAlign={dirAlign} />
+          <SwitchRow label={t("show_recommendations")} value={settings.showRecommendations} onChange={(v) => update({ showRecommendations: v })} dirAlign={dirAlign} />
+          <SwitchRow label={t("show_drawings")} value={settings.showDrawings} onChange={(v) => update({ showDrawings: v })} dirAlign={dirAlign} />
+          <SwitchRow label={t("enable_notifications")} value={settings.enableNotifications} onChange={(v) => update({ enableNotifications: v })} dirAlign={dirAlign} />
         </Section>
 
         {/* Market structure */}
