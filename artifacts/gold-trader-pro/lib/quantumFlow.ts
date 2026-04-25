@@ -57,23 +57,69 @@ export interface BOSInfo {
 export type Trend = "UPTREND" | "DOWNTREND" | "RANGE";
 export type SignalDir = "BUY" | "SELL" | "NEUTRAL";
 
+export type SessionFilter = "all" | "asia" | "london" | "ny" | "london_ny";
+export type ConfluenceMode = "any" | "majority" | "all";
+
 export interface QFASettings {
+  // Market structure
   swingLength: number;
   enableWall: boolean;
   enableWarZone: boolean;
+  enableBOS: boolean;
+  enableFVG: boolean;
+  requireFvgConfluence: boolean;
+  allowCounterTrend: boolean;
+  // Fibonacci
   useGoldenZone: boolean;
+  requireGoldenZone: boolean;
+  // Breakouts
   enableOrb: boolean;
+  // Engine + RSI cross
   engineMode: "fast" | "balanced" | "slow";
+  enableQFCross: boolean;
+  useCustomRsiZones: boolean;
+  buyZoneLow: number;
+  buyZoneHigh: number;
+  sellZoneLow: number;
+  sellZoneHigh: number;
+  rsiPeriod: number;
+  emaRsiPeriod: number;
+  adxPeriod: number;
+  atrPeriod: number;
+  // Mandatory filters
   adxThreshold: number;
   spikeFilterMult: number;
+  minVolatilityMult: number;
+  // Optional filters
   useMtfFilter: boolean;
   useVwapFilter: boolean;
   useMacdDivFilter: boolean;
   useDxyFilter: boolean;
   useMoonFilter: boolean;
+  sessionFilter: SessionFilter;
+  // Weights
+  weightBOS: number;
+  weightWall: number;
+  weightGoldenZone: number;
+  weightFVG: number;
+  weightMacdDiv: number;
+  weightMtf: number;
+  weightVwap: number;
+  weightOrb: number;
+  weightMoon: number;
+  // Confidence/RR gates
+  confluenceMode: ConfluenceMode;
+  minConfidence: number;
+  minRiskReward: number;
+  // Early warning
   enableEarlyWarning: boolean;
+  // Risk
   slMethod: "structural" | "atr" | "fib";
-  tpMethod: "structural" | "fib";
+  tpMethod: "structural" | "fib" | "atr";
+  atrSlMult: number;
+  atrTpMult: number;
+  fibTp1: string;
+  fibTp2: string;
   useTrailing: boolean;
 }
 
@@ -403,6 +449,7 @@ export function quantumFlowCheck(
   rsiSeries: (number | null)[],
   emaRsiSeries: (number | null)[],
   mode: "fast" | "balanced" | "slow",
+  customZones?: { buyLow: number; buyHigh: number; sellLow: number; sellHigh: number },
 ): QFCheckResult {
   const n = rsiSeries.length;
   if (n < 3) return { buyTrigger: false, sellTrigger: false, reason: "insufficient data" };
@@ -413,8 +460,10 @@ export function quantumFlowCheck(
   if (r == null || rPrev == null || e == null || ePrev == null) {
     return { buyTrigger: false, sellTrigger: false, reason: "missing values" };
   }
-  const lowZone = mode === "fast" ? [30, 40] : mode === "slow" ? [40, 50] : [35, 45];
-  const highZone = mode === "fast" ? [60, 70] : mode === "slow" ? [50, 60] : [55, 65];
+  const presetLow = mode === "fast" ? [30, 40] : mode === "slow" ? [40, 50] : [35, 45];
+  const presetHigh = mode === "fast" ? [60, 70] : mode === "slow" ? [50, 60] : [55, 65];
+  const lowZone = customZones ? [customZones.buyLow, customZones.buyHigh] : presetLow;
+  const highZone = customZones ? [customZones.sellLow, customZones.sellHigh] : presetHigh;
   const buyTrigger = rPrev <= ePrev && r > e && rPrev >= lowZone[0]! && rPrev <= lowZone[1]! && r > 50;
   const sellTrigger = rPrev >= ePrev && r < e && rPrev >= highZone[0]! && rPrev <= highZone[1]! && r < 50;
   return {
@@ -499,8 +548,78 @@ export function orbStatus(
   return "NONE";
 }
 
+// Default QFA settings (used by strategies/backtester when no user settings present)
+export const DEFAULT_QFA_SETTINGS: QFASettings = {
+  swingLength: 5,
+  enableWall: true,
+  enableWarZone: true,
+  enableBOS: true,
+  enableFVG: true,
+  requireFvgConfluence: false,
+  allowCounterTrend: true,
+  useGoldenZone: true,
+  requireGoldenZone: false,
+  enableOrb: true,
+  engineMode: "balanced",
+  enableQFCross: true,
+  useCustomRsiZones: false,
+  buyZoneLow: 35,
+  buyZoneHigh: 45,
+  sellZoneLow: 55,
+  sellZoneHigh: 65,
+  rsiPeriod: 14,
+  emaRsiPeriod: 9,
+  adxPeriod: 14,
+  atrPeriod: 14,
+  adxThreshold: 25,
+  spikeFilterMult: 2.5,
+  minVolatilityMult: 0.3,
+  useMtfFilter: true,
+  useVwapFilter: false,
+  useMacdDivFilter: true,
+  useDxyFilter: false,
+  useMoonFilter: false,
+  sessionFilter: "all",
+  weightBOS: 10,
+  weightWall: 8,
+  weightGoldenZone: 8,
+  weightFVG: 6,
+  weightMacdDiv: 10,
+  weightMtf: 6,
+  weightVwap: 4,
+  weightOrb: 5,
+  weightMoon: 3,
+  confluenceMode: "any",
+  minConfidence: 50,
+  minRiskReward: 1.5,
+  enableEarlyWarning: true,
+  slMethod: "structural",
+  tpMethod: "structural",
+  atrSlMult: 1.5,
+  atrTpMult: 2.0,
+  fibTp1: "1.272",
+  fibTp2: "1.618",
+  useTrailing: true,
+};
+
 // =============================================================
 // Main analysis function
+// =============================================================
+// Helper: detect which trading session a UTC timestamp belongs to
+function inSession(t: number, filter: SessionFilter): boolean {
+  if (filter === "all") return true;
+  const d = new Date(t);
+  const h = d.getUTCHours();
+  // Approx (UTC): Asia 00-08, London 07-16, NY 13-21
+  if (filter === "asia") return h >= 0 && h < 8;
+  if (filter === "london") return h >= 7 && h < 16;
+  if (filter === "ny") return h >= 13 && h < 21;
+  if (filter === "london_ny") return h >= 7 && h < 21;
+  return true;
+}
+
+// =============================================================
+// Main analysis function — fully customizable via settings
 // =============================================================
 export function analyzeQuantumFlow(
   candles: Candle[],
@@ -512,12 +631,12 @@ export function analyzeQuantumFlow(
 
   // 1. Swing points
   const { highs, lows } = detectSwingPoints(candles, settings.swingLength);
-  // 2. Indicators
-  const adxRes = adx(candles, 14);
-  const atrSeries = atr(candles, 14);
-  const rsiSeries = rsi(closes, 14);
+  // 2. Indicators (use periods from settings)
+  const adxRes = adx(candles, settings.adxPeriod);
+  const atrSeries = atr(candles, settings.atrPeriod);
+  const rsiSeries = rsi(closes, settings.rsiPeriod);
   const rsiNumeric = rsiSeries.map((v) => v ?? 50);
-  const emaRsi = ema(rsiNumeric, 9);
+  const emaRsi = ema(rsiNumeric, settings.emaRsiPeriod);
   const macdRes = macd(closes);
   const bb = bollinger(closes, 20, 2);
   const vwapSeries = vwap(candles);
@@ -531,25 +650,46 @@ export function analyzeQuantumFlow(
 
   // 3. Trend
   const trend = determineTrend(highs, lows);
-  // 4. BOS + Wall
-  const bos = detectBOS(highs, lows, candles);
-  const wall = settings.enableWall ? detectWall(candles, atrSeries) : { exists: false, broken: false, side: null as "UP" | "DOWN" | null, price: 0 };
+  // 4. BOS + Wall (each individually toggleable)
+  const bos = settings.enableBOS
+    ? detectBOS(highs, lows, candles)
+    : { detected: false, direction: null as "UP" | "DOWN" | null, brokenLevel: 0 };
+  const wall = settings.enableWall
+    ? detectWall(candles, atrSeries)
+    : { exists: false, broken: false, side: null as "UP" | "DOWN" | null, price: 0 };
   // 5. War zone
-  const warZone = settings.enableWarZone ? detectWarZone(candles, 30) : { active: false, high: 0, low: 0, startIdx: 0 };
+  const warZone = settings.enableWarZone
+    ? detectWarZone(candles, 30)
+    : { active: false, high: 0, low: 0, startIdx: 0 };
   // 6. Fibonacci
   const fib = fibFromSwings(highs, lows);
   // 7. FVG + ORB
-  const fvgZones = detectFVG(candles, 80);
+  const fvgZones = settings.enableFVG ? detectFVG(candles, 80) : [];
   const orb = settings.enableOrb ? orbStatus(candles) : "NONE";
 
   // 8. Mandatory filters
   const adxOk = adxV >= settings.adxThreshold;
   const candleRange = last.h - last.l;
   const spike = atrV > 0 && candleRange > settings.spikeFilterMult * atrV;
-  const volatilityOk = candleRange > atrV * 0.3;
+  const volatilityOk = candleRange > atrV * settings.minVolatilityMult;
+  const sessionOk = inSession(last.t, settings.sessionFilter);
 
-  // 9. Quantum Flow trigger
-  const qf = quantumFlowCheck(rsiSeries, emaRsi, settings.engineMode);
+  // 9. Quantum Flow trigger (respect custom zones if enabled)
+  const qf = settings.enableQFCross
+    ? quantumFlowCheck(
+        rsiSeries,
+        emaRsi,
+        settings.engineMode,
+        settings.useCustomRsiZones
+          ? {
+              buyLow: settings.buyZoneLow,
+              buyHigh: settings.buyZoneHigh,
+              sellLow: settings.sellZoneLow,
+              sellHigh: settings.sellZoneHigh,
+            }
+          : undefined,
+      )
+    : { buyTrigger: false, sellTrigger: false, reason: "QF cross disabled" };
 
   // 10. Optional filters
   const macdDiv = settings.useMacdDivFilter
@@ -557,55 +697,80 @@ export function analyzeQuantumFlow(
     : "NONE";
   const vwapOk = (side: SignalDir) =>
     !settings.useVwapFilter || (side === "BUY" ? last.c > vwapV : last.c < vwapV);
-  const moon = settings.useMoonFilter ? moonFavors(moonPhase(new Date(last.t))) : "NEUTRAL";
+  const moon = settings.useMoonFilter
+    ? moonFavors(moonPhase(new Date(last.t)))
+    : "NEUTRAL";
 
   // Decision
   const triggers: string[] = [];
   const explain: string[] = [];
   const warnings: string[] = [];
-  if (warZone.active) warnings.push(lang === "ar" ? "السعر داخل منطقة الحرب" : "Price inside War Zone");
-  if (!adxOk) warnings.push(lang === "ar" ? `ADX ضعيف (${adxV.toFixed(0)})` : `Weak ADX (${adxV.toFixed(0)})`);
-  if (spike) warnings.push(lang === "ar" ? "شمعة شاذة — تأخير الإشارة" : "Spike candle — signal delayed");
-  if (!volatilityOk) warnings.push(lang === "ar" ? "تذبذب منخفض" : "Low volatility");
+  if (warZone.active)
+    warnings.push(lang === "ar" ? "السعر داخل منطقة الحرب" : "Price inside War Zone");
+  if (!adxOk)
+    warnings.push(
+      lang === "ar"
+        ? `ADX ضعيف (${adxV.toFixed(0)} < ${settings.adxThreshold})`
+        : `Weak ADX (${adxV.toFixed(0)} < ${settings.adxThreshold})`,
+    );
+  if (spike)
+    warnings.push(lang === "ar" ? "شمعة شاذة — تأخير الإشارة" : "Spike candle — signal delayed");
+  if (!volatilityOk)
+    warnings.push(lang === "ar" ? "تذبذب منخفض" : "Low volatility");
+  if (!sessionOk)
+    warnings.push(lang === "ar" ? "خارج الجلسة المختارة" : "Outside selected session");
 
   let signal: SignalDir = "NEUTRAL";
   let entry = last.c;
   let confidence = 0;
 
-  const allowSignal = !warZone.active && adxOk && !spike && volatilityOk;
+  const allowSignal = !warZone.active && adxOk && !spike && volatilityOk && sessionOk;
 
   if (allowSignal) {
-    if (qf.buyTrigger) {
+    // Primary trigger: QF cross
+    if (settings.enableQFCross && qf.buyTrigger) {
       signal = "BUY";
       triggers.push("QF_CROSS_UP");
-      explain.push(lang === "ar" ? "تقاطع RSI صاعد من منطقة الشحن" : "Bullish RSI cross from charge zone");
-    } else if (qf.sellTrigger) {
+      explain.push(
+        lang === "ar"
+          ? "تقاطع RSI صاعد من منطقة الشحن"
+          : "Bullish RSI cross from charge zone",
+      );
+    } else if (settings.enableQFCross && qf.sellTrigger) {
       signal = "SELL";
       triggers.push("QF_CROSS_DOWN");
-      explain.push(lang === "ar" ? "تقاطع RSI هابط من منطقة الشحن" : "Bearish RSI cross from charge zone");
+      explain.push(
+        lang === "ar"
+          ? "تقاطع RSI هابط من منطقة الشحن"
+          : "Bearish RSI cross from charge zone",
+      );
     }
-    if (signal === "NEUTRAL") {
-      // fallback: BOS in trend direction
-      if (bos.detected && bos.direction === "UP" && trend !== "DOWNTREND") {
+    // Fallback trigger: BOS in trend direction (only if BOS enabled)
+    if (signal === "NEUTRAL" && settings.enableBOS) {
+      const bullOk = settings.allowCounterTrend || trend !== "DOWNTREND";
+      const bearOk = settings.allowCounterTrend || trend !== "UPTREND";
+      if (bos.detected && bos.direction === "UP" && bullOk) {
         signal = "BUY";
         triggers.push("BOS_BULL");
         explain.push(lang === "ar" ? "كسر هيكل صاعد" : "Bullish break of structure");
-      } else if (bos.detected && bos.direction === "DOWN" && trend !== "UPTREND") {
+      } else if (bos.detected && bos.direction === "DOWN" && bearOk) {
         signal = "SELL";
         triggers.push("BOS_BEAR");
         explain.push(lang === "ar" ? "كسر هيكل هابط" : "Bearish break of structure");
       }
     }
+    // Apply optional filters
     if (signal !== "NEUTRAL") {
-      // Apply optional filters
       if (settings.useMtfFilter) {
-        // Approximate MTF: use SMA of close on higher window
-        const sma50 = closes.slice(-50).reduce((a, b) => a + b, 0) / Math.min(50, closes.length);
+        const sma50 =
+          closes.slice(-50).reduce((a, b) => a + b, 0) / Math.min(50, closes.length);
         const mtfBull = last.c > sma50;
         if ((signal === "BUY" && !mtfBull) || (signal === "SELL" && mtfBull)) {
           warnings.push(lang === "ar" ? "تعارض مع الفريم الأعلى" : "Conflicts with higher timeframe");
           signal = "NEUTRAL";
-        } else triggers.push("MTF_OK");
+        } else {
+          triggers.push("MTF_OK");
+        }
       }
       if (signal !== "NEUTRAL" && !vwapOk(signal)) {
         warnings.push(lang === "ar" ? "تعارض مع VWAP" : "Conflicts with VWAP");
@@ -618,46 +783,130 @@ export function analyzeQuantumFlow(
         if (signal === "SELL" && macdDiv === "BEAR_DIV") triggers.push("MACD_BEAR_DIV");
       }
       if (signal !== "NEUTRAL" && settings.useDxyFilter) {
-        // Without real DXY data we use inverse correlation proxy: VWAP slope
-        triggers.push("DXY_FILTER_APPLIED");
+        // proxy: use VWAP slope as DXY-direction proxy
+        const vwapSlope = (vwapV - (vwapSeries[Math.max(0, lastIdx - 5)] ?? vwapV)) /
+          (atrV || 1);
+        if ((signal === "BUY" && vwapSlope < 0) || (signal === "SELL" && vwapSlope > 0)) {
+          triggers.push("DXY_OK");
+        } else {
+          warnings.push(lang === "ar" ? "تعارض مع مؤشر الدولار" : "Conflicts with DXY");
+          // soft penalty only — don't kill signal
+        }
       }
       if (signal !== "NEUTRAL" && settings.useMoonFilter) {
         if ((signal === "BUY" && moon === "BEAR") || (signal === "SELL" && moon === "BULL")) {
           warnings.push(lang === "ar" ? "طور القمر يعارض الإشارة" : "Moon phase opposes signal");
-        } else triggers.push(`MOON_${moon}`);
+        } else {
+          triggers.push(`MOON_${moon}`);
+        }
       }
     }
   }
 
   // Bonus context triggers
-  if (fib && isInGoldenZone(last.c, fib) && settings.useGoldenZone) {
+  const inGZ = !!(fib && isInGoldenZone(last.c, fib));
+  if (inGZ && settings.useGoldenZone) {
     triggers.push("GOLDEN_ZONE");
-    explain.push(lang === "ar" ? "السعر داخل المنطقة الذهبية لفيبوناتشي" : "Price within Fib golden zone");
+    explain.push(
+      lang === "ar"
+        ? "السعر داخل المنطقة الذهبية لفيبوناتشي"
+        : "Price within Fib golden zone",
+    );
   }
+  // Mandatory golden zone gate
+  if (signal !== "NEUTRAL" && settings.requireGoldenZone && !inGZ) {
+    warnings.push(
+      lang === "ar"
+        ? "خارج المنطقة الذهبية — مطلوبة"
+        : "Outside Golden Zone — required",
+    );
+    signal = "NEUTRAL";
+  }
+  // FVG context
   const lastFvg = fvgZones[fvgZones.length - 1];
-  if (lastFvg && !lastFvg.filled) {
+  if (settings.enableFVG && lastFvg && !lastFvg.filled) {
     triggers.push(lastFvg.side === "BULL" ? "FVG_BULL_TOUCH" : "FVG_BEAR_TOUCH");
   }
-  if (wall.exists && wall.broken) {
+  // Mandatory FVG confluence gate
+  if (signal !== "NEUTRAL" && settings.requireFvgConfluence) {
+    const want = signal === "BUY" ? "BULL" : "BEAR";
+    const hasFvg = fvgZones.some((z) => !z.filled && z.side === want);
+    if (!hasFvg) {
+      warnings.push(
+        lang === "ar"
+          ? "لا توجد فجوة FVG داعمة — مطلوبة"
+          : "No supporting FVG — required",
+      );
+      signal = "NEUTRAL";
+    }
+  }
+  if (settings.enableWall && wall.exists && wall.broken) {
     triggers.push(wall.side === "UP" ? "WALL_BREAK_UP" : "WALL_BREAK_DOWN");
-    explain.push(lang === "ar" ? `كسر الجدار ${wall.side === "UP" ? "الصاعد" : "الهابط"}` : `Wall break ${wall.side}`);
+    explain.push(
+      lang === "ar"
+        ? `كسر الجدار ${wall.side === "UP" ? "الصاعد" : "الهابط"}`
+        : `Wall break ${wall.side}`,
+    );
   }
   if (orb !== "NONE") triggers.push(`ORB_${orb.replace("BREAKOUT_", "")}`);
 
-  // Confidence scoring
+  // Confidence scoring with user-defined weights
   if (signal !== "NEUTRAL") {
     let score = 50;
-    if (triggers.includes("BOS_BULL") || triggers.includes("BOS_BEAR")) score += 10;
-    if (triggers.includes("WALL_BREAK_UP") || triggers.includes("WALL_BREAK_DOWN")) score += 8;
-    if (triggers.includes("GOLDEN_ZONE")) score += 8;
-    if (triggers.includes("MACD_BULL_DIV") || triggers.includes("MACD_BEAR_DIV")) score += 10;
-    if (triggers.some((t) => t.startsWith("FVG_"))) score += 6;
-    if (triggers.includes("MTF_OK")) score += 6;
-    if (triggers.some((t) => t.startsWith("ORB_"))) score += 5;
-    if (triggers.includes("VWAP_OK")) score += 4;
+    if (triggers.includes("BOS_BULL") || triggers.includes("BOS_BEAR"))
+      score += settings.weightBOS;
+    if (triggers.includes("WALL_BREAK_UP") || triggers.includes("WALL_BREAK_DOWN"))
+      score += settings.weightWall;
+    if (triggers.includes("GOLDEN_ZONE")) score += settings.weightGoldenZone;
+    if (triggers.includes("MACD_BULL_DIV") || triggers.includes("MACD_BEAR_DIV"))
+      score += settings.weightMacdDiv;
+    if (triggers.some((t) => t.startsWith("FVG_"))) score += settings.weightFVG;
+    if (triggers.includes("MTF_OK")) score += settings.weightMtf;
+    if (triggers.some((t) => t.startsWith("ORB_"))) score += settings.weightOrb;
+    if (triggers.includes("VWAP_OK")) score += settings.weightVwap;
+    if (triggers.some((t) => t.startsWith("MOON_"))) score += settings.weightMoon;
     score -= warnings.length * 4;
-    if (adxV >= 30) score += 4;
+    if (adxV >= settings.adxThreshold + 5) score += 4;
     confidence = Math.max(0, Math.min(99, score));
+  }
+
+  // Confluence-mode gate
+  if (signal !== "NEUTRAL") {
+    const optionalActive = [
+      settings.useMtfFilter,
+      settings.useVwapFilter,
+      settings.useMacdDivFilter,
+      settings.useDxyFilter,
+      settings.useMoonFilter,
+    ].filter(Boolean).length;
+    const optionalConfirmed = [
+      triggers.includes("MTF_OK"),
+      triggers.includes("VWAP_OK"),
+      triggers.includes("MACD_BULL_DIV") || triggers.includes("MACD_BEAR_DIV"),
+      triggers.includes("DXY_OK"),
+      triggers.some((t) => t.startsWith("MOON_")),
+    ].filter(Boolean).length;
+    if (settings.confluenceMode === "all" && optionalActive > 0 && optionalConfirmed < optionalActive) {
+      warnings.push(lang === "ar" ? "نقص الإجماع المطلوب (الكل)" : "Missing required confluence (all)");
+      signal = "NEUTRAL";
+    } else if (
+      settings.confluenceMode === "majority" &&
+      optionalActive > 1 &&
+      optionalConfirmed < Math.ceil(optionalActive / 2)
+    ) {
+      warnings.push(lang === "ar" ? "نقص الإجماع المطلوب (أغلبية)" : "Missing required confluence (majority)");
+      signal = "NEUTRAL";
+    }
+  }
+
+  // Min-confidence gate
+  if (signal !== "NEUTRAL" && confidence < settings.minConfidence) {
+    warnings.push(
+      lang === "ar"
+        ? `الثقة (${confidence}) أقل من الحد الأدنى (${settings.minConfidence})`
+        : `Confidence (${confidence}) below minimum (${settings.minConfidence})`,
+    );
+    signal = "NEUTRAL";
   }
 
   // Stops / targets
@@ -667,31 +916,55 @@ export function analyzeQuantumFlow(
   if (signal !== "NEUTRAL") {
     const dir = signal === "BUY" ? 1 : -1;
     if (settings.slMethod === "structural") {
-      const ref = signal === "BUY" ? lows[lows.length - 1]?.price ?? entry - atrV : highs[highs.length - 1]?.price ?? entry + atrV;
+      const ref =
+        signal === "BUY"
+          ? (lows[lows.length - 1]?.price ?? entry - atrV)
+          : (highs[highs.length - 1]?.price ?? entry + atrV);
       sl = ref;
     } else if (settings.slMethod === "atr") {
-      sl = entry - dir * atrV * 1.5;
+      sl = entry - dir * atrV * settings.atrSlMult;
     } else if (settings.slMethod === "fib" && fib) {
-      sl = signal === "BUY" ? fib.startPrice : fib.startPrice;
+      sl = fib.startPrice;
     }
     const risk = Math.abs(entry - sl) || atrV;
     if (settings.tpMethod === "structural") {
       const tgt = signal === "BUY" ? highs[highs.length - 1]?.price : lows[lows.length - 1]?.price;
-      tp1 = tgt && (signal === "BUY" ? tgt > entry : tgt < entry) ? tgt : entry + dir * risk * 1.5;
+      tp1 =
+        tgt && (signal === "BUY" ? tgt > entry : tgt < entry)
+          ? tgt
+          : entry + dir * risk * 1.5;
       tp2 = entry + dir * risk * 3;
     } else if (settings.tpMethod === "fib" && fib) {
-      tp1 = fib.levels["1.272"] ?? entry + dir * risk * 2;
-      tp2 = fib.levels["1.618"] ?? entry + dir * risk * 3;
+      tp1 = fib.levels[settings.fibTp1] ?? entry + dir * risk * 2;
+      tp2 = fib.levels[settings.fibTp2] ?? entry + dir * risk * 3;
+    } else if (settings.tpMethod === "atr") {
+      tp1 = entry + dir * atrV * settings.atrTpMult;
+      tp2 = entry + dir * atrV * settings.atrTpMult * 1.6;
     } else {
       tp1 = entry + dir * risk * 2;
       tp2 = entry + dir * risk * 3;
+    }
+
+    // Min RR gate
+    const rr = Math.abs(tp1 - entry) / (Math.abs(entry - sl) || 1);
+    if (rr < settings.minRiskReward) {
+      warnings.push(
+        lang === "ar"
+          ? `R:R (${rr.toFixed(2)}) أقل من الحد (${settings.minRiskReward})`
+          : `R:R (${rr.toFixed(2)}) below min (${settings.minRiskReward})`,
+      );
+      signal = "NEUTRAL";
+      confidence = 0;
     }
   }
 
   // Early warning
   const cm = compositeMomentum(rsiSeries, closes, atrSeries, 5);
   const earlyWarning = settings.enableEarlyWarning && cm.weakening;
-  if (earlyWarning) warnings.push(lang === "ar" ? "ضعف في الزخم — انقل الوقف" : "Momentum weakening — trail stop");
+  if (earlyWarning)
+    warnings.push(
+      lang === "ar" ? "ضعف في الزخم — انقل الوقف" : "Momentum weakening — trail stop",
+    );
 
   const summaryParts: string[] = [];
   summaryParts.push(
@@ -703,6 +976,11 @@ export function analyzeQuantumFlow(
   summaryParts.push(`RSI ${rsiV.toFixed(1)}`);
   if (warZone.active) summaryParts.push(lang === "ar" ? "منطقة الحرب" : "WarZone");
   if (orb !== "NONE") summaryParts.push(`ORB ${orb}`);
+  summaryParts.push(
+    lang === "ar"
+      ? `الإجماع: ${settings.confluenceMode === "all" ? "الكل" : settings.confluenceMode === "majority" ? "أغلبية" : "أي"}`
+      : `Conf: ${settings.confluenceMode}`,
+  );
 
   return {
     signal,

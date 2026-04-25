@@ -9,7 +9,7 @@ import {
   pivotPoints,
   findSwingPoints,
 } from "./indicators";
-import { analyzeQuantumFlow, quantumFlowCheck, detectSwingPoints } from "./quantumFlow";
+import { analyzeQuantumFlow, quantumFlowCheck, detectSwingPoints, DEFAULT_QFA_SETTINGS } from "./quantumFlow";
 
 export type Side = "LONG" | "SHORT" | "FLAT";
 
@@ -515,25 +515,7 @@ const quantumFlowAlpha: Strategy = {
     }
     // Final live snapshot via full analyzer
     try {
-      const live = analyzeQuantumFlow(candles, {
-        swingLength: 5,
-        enableWall: true,
-        enableWarZone: true,
-        useGoldenZone: true,
-        enableOrb: true,
-        engineMode: "balanced",
-        adxThreshold: 25,
-        spikeFilterMult: 2.5,
-        useMtfFilter: true,
-        useVwapFilter: false,
-        useMacdDivFilter: true,
-        useDxyFilter: false,
-        useMoonFilter: false,
-        enableEarlyWarning: true,
-        slMethod: "structural",
-        tpMethod: "structural",
-        useTrailing: true,
-      });
+      const live = analyzeQuantumFlow(candles, DEFAULT_QFA_SETTINGS);
       return {
         signals,
         meta: {

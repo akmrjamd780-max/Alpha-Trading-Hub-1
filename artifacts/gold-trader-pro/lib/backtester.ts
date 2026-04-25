@@ -60,7 +60,7 @@ export function backtest(
       exitIdx: i,
       entryTime: openSignal.time,
       exitTime: candles[i]!.t,
-      side: openSignal.side,
+      side: openSignal.side as "LONG" | "SHORT",
       entry: openSignal.price,
       exit: price,
       pnl,
