@@ -202,13 +202,13 @@ export default function MarketsScreen() {
                   style={[
                     styles.sideTag,
                     {
-                      backgroundColor: liveAi.signal === "BUY" ? colors.bullish : colors.bearish,
+                      backgroundColor: liveAi.signal === "BUY" || liveAi.signal === "PENDING_BUY" ? colors.bullish : liveAi.signal === "SELL" || liveAi.signal === "PENDING_SELL" ? colors.bearish : colors.gold,
                       borderRadius: 6,
                     },
                   ]}
                 >
                   <Text style={styles.sideTagText}>
-                    {liveAi.signal === "BUY" ? t("signal_buy") : t("signal_sell")}
+                    {liveAi.signal === "BUY" ? t("signal_buy") : liveAi.signal === "SELL" ? t("signal_sell") : liveAi.signal === "PENDING_BUY" ? t("pending_buy") : liveAi.signal === "PENDING_SELL" ? t("pending_sell") : t("signal_neutral")}
                   </Text>
                 </View>
                 <Text style={{ color: colors.foreground, fontFamily: "Inter_700Bold", fontSize: 16 }}>

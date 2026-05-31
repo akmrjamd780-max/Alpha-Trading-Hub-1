@@ -55,7 +55,8 @@ export interface BOSInfo {
 }
 
 export type Trend = "UPTREND" | "DOWNTREND" | "RANGE";
-export type SignalDir = "BUY" | "SELL" | "NEUTRAL";
+export type TrendStrength = "WEAK" | "MEDIUM" | "STRONG" | "VERY_STRONG";
+export type SignalDir = "BUY" | "SELL" | "NEUTRAL" | "PENDING_BUY" | "PENDING_SELL" | "WAIT" | "INVALID" | "HIGH_RISK";
 
 export type SessionFilter = "all" | "asia" | "london" | "ny" | "london_ny";
 export type ConfluenceMode = "any" | "majority" | "all";
@@ -121,6 +122,7 @@ export interface QFASettings {
   fibTp1: string;
   fibTp2: string;
   useTrailing: boolean;
+  signalStyle?: "instant" | "pending" | "confirmed" | "conservative" | "aggressive";
 }
 
 export interface QFAResult {
@@ -150,6 +152,9 @@ export interface QFAResult {
   rsi: number;
   emaRsi: number;
   atr: number;
+  trendStrength: TrendStrength;
+  mandatoryPassed: number;
+  mandatoryTotal: number;
 }
 
 // ----- Helpers -----
@@ -199,6 +204,21 @@ export function detectBOS(
 ): BOSInfo {
   if (candles.length === 0) return { detected: false, direction: null, brokenLevel: 0 };
   const last = candles[candles.length - 1]!;
+  const prev = candles[candles.length - 2]!;
+  // Check last 2 swing highs/lows for break
+  for (let i = Math.max(0, highs.length - 2); i < highs.length; i++) {
+    const h = highs[i]!;
+    if (last.c > h.price && prev.c <= h.price) {
+      return { detected: true, direction: "UP", brokenLevel: h.price };
+    }
+  }
+  for (let i = Math.max(0, lows.length - 2); i < lows.length; i++) {
+    const l = lows[i]!;
+    if (last.c < l.price && prev.c >= l.price) {
+      return { detected: true, direction: "DOWN", brokenLevel: l.price };
+    }
+  }
+  // Also check if close already above/below
   const lastHigh = highs[highs.length - 1];
   const lastLow = lows[lows.length - 1];
   if (lastHigh && last.c > lastHigh.price) {
@@ -464,8 +484,11 @@ export function quantumFlowCheck(
   const presetHigh = mode === "fast" ? [60, 70] : mode === "slow" ? [50, 60] : [55, 65];
   const lowZone = customZones ? [customZones.buyLow, customZones.buyHigh] : presetLow;
   const highZone = customZones ? [customZones.sellLow, customZones.sellHigh] : presetHigh;
-  const buyTrigger = rPrev <= ePrev && r > e && rPrev >= lowZone[0]! && rPrev <= lowZone[1]! && r > 50;
-  const sellTrigger = rPrev >= ePrev && r < e && rPrev >= highZone[0]! && rPrev <= highZone[1]! && r < 50;
+  // Relaxed QF cross: just needs the cross to happen in the general zone, not exact range
+  const inBuyZone = rPrev >= lowZone[0]! && rPrev <= lowZone[1]! + 10;
+  const inSellZone = rPrev >= highZone[0]! - 10 && rPrev <= highZone[1]!;
+  const buyTrigger = rPrev <= ePrev && r > e && (inBuyZone || rPrev < 50);
+  const sellTrigger = rPrev >= ePrev && r < e && (inSellZone || rPrev > 50);
   return {
     buyTrigger,
     sellTrigger,
@@ -667,12 +690,27 @@ export function analyzeQuantumFlow(
   const fvgZones = settings.enableFVG ? detectFVG(candles, 80) : [];
   const orb = settings.enableOrb ? orbStatus(candles) : "NONE";
 
-  // 8. Mandatory filters
+  // 8. Mandatory filters — gate behaviour depends on signalStyle
   const adxOk = adxV >= settings.adxThreshold;
   const candleRange = last.h - last.l;
   const spike = atrV > 0 && candleRange > settings.spikeFilterMult * atrV;
   const volatilityOk = candleRange > atrV * settings.minVolatilityMult;
   const sessionOk = inSession(last.t, settings.sessionFilter);
+
+  // Soft-gate mode: strict = all mandatory, medium = allow some, loose = signal always
+  // signalStyle from profiles.ts controls how strict we are
+  const signalStyle = (settings as any).signalStyle as "instant" | "pending" | "confirmed" | "conservative" | "aggressive" | undefined;
+  const strictness = signalStyle === "conservative" ? 2 : signalStyle === "confirmed" ? 1.5 : signalStyle === "pending" ? 1 : signalStyle === "aggressive" ? 0.5 : signalStyle === "instant" ? 0.3 : 1;
+  const requiredMandatory = Math.ceil((strictness === 2 ? 4 : strictness === 1.5 ? 3 : strictness === 1 ? 2 : 1) * 0.7);
+  const mandatoryChecks = [
+    { ok: !warZone.active, label: "warZone" },
+    { ok: adxOk, label: "adx" },
+    { ok: !spike, label: "spike" },
+    { ok: volatilityOk, label: "volatility" },
+    { ok: sessionOk, label: "session" },
+  ];
+  const passedMandatory = mandatoryChecks.filter(c => c.ok).length;
+  const allowSignal = passedMandatory >= requiredMandatory;
 
   // 9. Quantum Flow trigger (respect custom zones if enabled)
   const qf = settings.enableQFCross
@@ -724,12 +762,10 @@ export function analyzeQuantumFlow(
   let entry = last.c;
   let confidence = 0;
 
-  const allowSignal = !warZone.active && adxOk && !spike && volatilityOk && sessionOk;
-
   if (allowSignal) {
     // Primary trigger: QF cross
     if (settings.enableQFCross && qf.buyTrigger) {
-      signal = "BUY";
+      signal = signalStyle === "pending" ? "PENDING_BUY" : "BUY";
       triggers.push("QF_CROSS_UP");
       explain.push(
         lang === "ar"
@@ -737,7 +773,7 @@ export function analyzeQuantumFlow(
           : "Bullish RSI cross from charge zone",
       );
     } else if (settings.enableQFCross && qf.sellTrigger) {
-      signal = "SELL";
+      signal = signalStyle === "pending" ? "PENDING_SELL" : "SELL";
       triggers.push("QF_CROSS_DOWN");
       explain.push(
         lang === "ar"
@@ -750,11 +786,11 @@ export function analyzeQuantumFlow(
       const bullOk = settings.allowCounterTrend || trend !== "DOWNTREND";
       const bearOk = settings.allowCounterTrend || trend !== "UPTREND";
       if (bos.detected && bos.direction === "UP" && bullOk) {
-        signal = "BUY";
+        signal = signalStyle === "pending" ? "PENDING_BUY" : "BUY";
         triggers.push("BOS_BULL");
         explain.push(lang === "ar" ? "كسر هيكل صاعد" : "Bullish break of structure");
       } else if (bos.detected && bos.direction === "DOWN" && bearOk) {
-        signal = "SELL";
+        signal = signalStyle === "pending" ? "PENDING_SELL" : "SELL";
         triggers.push("BOS_BEAR");
         explain.push(lang === "ar" ? "كسر هيكل هابط" : "Bearish break of structure");
       }
@@ -765,7 +801,8 @@ export function analyzeQuantumFlow(
         const sma50 =
           closes.slice(-50).reduce((a, b) => a + b, 0) / Math.min(50, closes.length);
         const mtfBull = last.c > sma50;
-        if ((signal === "BUY" && !mtfBull) || (signal === "SELL" && mtfBull)) {
+        const isBuySig = signal === "BUY" || signal === "PENDING_BUY";
+        if ((isBuySig && !mtfBull) || (!isBuySig && mtfBull)) {
           warnings.push(lang === "ar" ? "تعارض مع الفريم الأعلى" : "Conflicts with higher timeframe");
           signal = "NEUTRAL";
         } else {
@@ -779,14 +816,16 @@ export function analyzeQuantumFlow(
         triggers.push("VWAP_OK");
       }
       if (signal !== "NEUTRAL" && settings.useMacdDivFilter) {
-        if (signal === "BUY" && macdDiv === "BULL_DIV") triggers.push("MACD_BULL_DIV");
-        if (signal === "SELL" && macdDiv === "BEAR_DIV") triggers.push("MACD_BEAR_DIV");
+        const isBuySig = signal === "BUY" || signal === "PENDING_BUY";
+        if (isBuySig && macdDiv === "BULL_DIV") triggers.push("MACD_BULL_DIV");
+        if (!isBuySig && macdDiv === "BEAR_DIV") triggers.push("MACD_BEAR_DIV");
       }
       if (signal !== "NEUTRAL" && settings.useDxyFilter) {
         // proxy: use VWAP slope as DXY-direction proxy
         const vwapSlope = (vwapV - (vwapSeries[Math.max(0, lastIdx - 5)] ?? vwapV)) /
           (atrV || 1);
-        if ((signal === "BUY" && vwapSlope < 0) || (signal === "SELL" && vwapSlope > 0)) {
+        const isBuySig = signal === "BUY" || signal === "PENDING_BUY";
+        if ((isBuySig && vwapSlope < 0) || (!isBuySig && vwapSlope > 0)) {
           triggers.push("DXY_OK");
         } else {
           warnings.push(lang === "ar" ? "تعارض مع مؤشر الدولار" : "Conflicts with DXY");
@@ -794,7 +833,8 @@ export function analyzeQuantumFlow(
         }
       }
       if (signal !== "NEUTRAL" && settings.useMoonFilter) {
-        if ((signal === "BUY" && moon === "BEAR") || (signal === "SELL" && moon === "BULL")) {
+        const isBuySig = signal === "BUY" || signal === "PENDING_BUY";
+        if ((isBuySig && moon === "BEAR") || (!isBuySig && moon === "BULL")) {
           warnings.push(lang === "ar" ? "طور القمر يعارض الإشارة" : "Moon phase opposes signal");
         } else {
           triggers.push(`MOON_${moon}`);
@@ -829,7 +869,8 @@ export function analyzeQuantumFlow(
   }
   // Mandatory FVG confluence gate
   if (signal !== "NEUTRAL" && settings.requireFvgConfluence) {
-    const want = signal === "BUY" ? "BULL" : "BEAR";
+    const isBuySig = signal === "BUY" || signal === "PENDING_BUY";
+    const want = isBuySig ? "BULL" : "BEAR";
     const hasFvg = fvgZones.some((z) => !z.filled && z.side === want);
     if (!hasFvg) {
       warnings.push(
@@ -837,7 +878,7 @@ export function analyzeQuantumFlow(
           ? "لا توجد فجوة FVG داعمة — مطلوبة"
           : "No supporting FVG — required",
       );
-      signal = "NEUTRAL";
+      if (strictness >= 1) signal = "NEUTRAL";
     }
   }
   if (settings.enableWall && wall.exists && wall.broken) {
@@ -870,8 +911,8 @@ export function analyzeQuantumFlow(
     confidence = Math.max(0, Math.min(99, score));
   }
 
-  // Confluence-mode gate
-  if (signal !== "NEUTRAL") {
+  // Confluence-mode gate — soft for pending/instant styles
+  if (signal !== "NEUTRAL" && strictness >= 1) {
     const optionalActive = [
       settings.useMtfFilter,
       settings.useVwapFilter,
@@ -888,25 +929,25 @@ export function analyzeQuantumFlow(
     ].filter(Boolean).length;
     if (settings.confluenceMode === "all" && optionalActive > 0 && optionalConfirmed < optionalActive) {
       warnings.push(lang === "ar" ? "نقص الإجماع المطلوب (الكل)" : "Missing required confluence (all)");
-      signal = "NEUTRAL";
+      if (strictness >= 1.5) signal = "NEUTRAL";
     } else if (
       settings.confluenceMode === "majority" &&
       optionalActive > 1 &&
       optionalConfirmed < Math.ceil(optionalActive / 2)
     ) {
       warnings.push(lang === "ar" ? "نقص الإجماع المطلوب (أغلبية)" : "Missing required confluence (majority)");
-      signal = "NEUTRAL";
+      if (strictness >= 1.5) signal = "NEUTRAL";
     }
   }
 
-  // Min-confidence gate
+  // Min-confidence gate — for instant/aggressive, keep signal with low confidence
   if (signal !== "NEUTRAL" && confidence < settings.minConfidence) {
     warnings.push(
       lang === "ar"
         ? `الثقة (${confidence}) أقل من الحد الأدنى (${settings.minConfidence})`
         : `Confidence (${confidence}) below minimum (${settings.minConfidence})`,
     );
-    signal = "NEUTRAL";
+    if (strictness >= 1) signal = "NEUTRAL";
   }
 
   // Stops / targets
@@ -914,10 +955,11 @@ export function analyzeQuantumFlow(
   let tp1 = entry;
   let tp2 = entry;
   if (signal !== "NEUTRAL") {
-    const dir = signal === "BUY" ? 1 : -1;
+    const sigStr = signal as string;
+    const dir = sigStr === "BUY" || sigStr === "PENDING_BUY" ? 1 : sigStr === "SELL" || sigStr === "PENDING_SELL" ? -1 : 0;
     if (settings.slMethod === "structural") {
       const ref =
-        signal === "BUY"
+        dir === 1
           ? (lows[lows.length - 1]?.price ?? entry - atrV)
           : (highs[highs.length - 1]?.price ?? entry + atrV);
       sl = ref;
@@ -928,9 +970,9 @@ export function analyzeQuantumFlow(
     }
     const risk = Math.abs(entry - sl) || atrV;
     if (settings.tpMethod === "structural") {
-      const tgt = signal === "BUY" ? highs[highs.length - 1]?.price : lows[lows.length - 1]?.price;
+      const tgt = dir === 1 ? highs[highs.length - 1]?.price : lows[lows.length - 1]?.price;
       tp1 =
-        tgt && (signal === "BUY" ? tgt > entry : tgt < entry)
+        tgt && (dir === 1 ? tgt > entry : tgt < entry)
           ? tgt
           : entry + dir * risk * 1.5;
       tp2 = entry + dir * risk * 3;
@@ -945,7 +987,7 @@ export function analyzeQuantumFlow(
       tp2 = entry + dir * risk * 3;
     }
 
-    // Min RR gate
+    // Min RR gate — soft for instant/aggressive
     const rr = Math.abs(tp1 - entry) / (Math.abs(entry - sl) || 1);
     if (rr < settings.minRiskReward) {
       warnings.push(
@@ -953,8 +995,10 @@ export function analyzeQuantumFlow(
           ? `R:R (${rr.toFixed(2)}) أقل من الحد (${settings.minRiskReward})`
           : `R:R (${rr.toFixed(2)}) below min (${settings.minRiskReward})`,
       );
-      signal = "NEUTRAL";
-      confidence = 0;
+      if (strictness >= 1) {
+        signal = "NEUTRAL";
+        confidence = 0;
+      }
     }
   }
 
@@ -966,14 +1010,30 @@ export function analyzeQuantumFlow(
       lang === "ar" ? "ضعف في الزخم — انقل الوقف" : "Momentum weakening — trail stop",
     );
 
+  // Trend strength calculation
+  const trendStrengthVal: TrendStrength = trend === "RANGE"
+    ? "WEAK"
+    : adxV < 20
+      ? "WEAK"
+      : adxV < 30
+        ? "MEDIUM"
+        : adxV < 40
+          ? "STRONG"
+          : "VERY_STRONG";
+  const trendStrengthLabel = trendStrengthVal === "WEAK" ? (lang === "ar" ? "ضعيفة" : "Weak")
+    : trendStrengthVal === "MEDIUM" ? (lang === "ar" ? "متوسطة" : "Medium")
+    : trendStrengthVal === "STRONG" ? (lang === "ar" ? "قوية" : "Strong")
+    : (lang === "ar" ? "قوية جداً" : "Very Strong");
+
   const summaryParts: string[] = [];
   summaryParts.push(
     lang === "ar"
-      ? `الاتجاه: ${trend === "UPTREND" ? "صاعد" : trend === "DOWNTREND" ? "هابط" : "عرضي"}`
-      : `Trend: ${trend}`,
+      ? `الاتجاه: ${trend === "UPTREND" ? "صاعد" : trend === "DOWNTREND" ? "هابط" : "عرضي"} · قوة: ${trendStrengthLabel}`
+      : `Trend: ${trend} · Strength: ${trendStrengthLabel}`,
   );
   summaryParts.push(`ADX ${adxV.toFixed(0)}`);
   summaryParts.push(`RSI ${rsiV.toFixed(1)}`);
+  summaryParts.push(`مرشحات: ${passedMandatory}/${mandatoryChecks.length}`);
   if (warZone.active) summaryParts.push(lang === "ar" ? "منطقة الحرب" : "WarZone");
   if (orb !== "NONE") summaryParts.push(`ORB ${orb}`);
   summaryParts.push(
@@ -1009,5 +1069,8 @@ export function analyzeQuantumFlow(
     rsi: rsiV,
     emaRsi: emaRsiV,
     atr: atrV,
+    trendStrength: trendStrengthVal,
+    mandatoryPassed: passedMandatory,
+    mandatoryTotal: mandatoryChecks.length,
   };
 }

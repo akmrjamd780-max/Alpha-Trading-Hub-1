@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 
 import { ScreenHeader } from "@/components/Header";
-import { PriceChart, type FVGOverlay, type SignalMarker } from "@/components/PriceChart";
+import { TradingViewChart, type TVFVG, type TVMarker, type TVHLine } from "@/components/TradingViewChart";
 import { Card } from "@/components/Card";
 import { useColors, useRadius } from "@/hooks/useColors";
 import { useMarket } from "@/context/MarketContext";
@@ -77,7 +77,7 @@ export default function ChartsScreen() {
     return o;
   }, [closes, overlays]);
 
-  const fvgOverlay: FVGOverlay[] = useMemo(() => {
+  const fvgOverlay: TVFVG[] = useMemo(() => {
     if (!analysis || !overlays.includes("fvg")) return [];
     return analysis.fvgZones.map((z) => ({
       startIdx: z.botIdx,
@@ -99,23 +99,23 @@ export default function ChartsScreen() {
   }, [analysis, overlays, colors]);
 
   const warOverlay = analysis && overlays.includes("warzone") ? analysis.warZone : null;
-  const swingHighs = analysis && overlays.includes("swings") ? analysis.swingHighs.map((s) => s.index) : [];
-  const swingLows = analysis && overlays.includes("swings") ? analysis.swingLows.map((s) => s.index) : [];
 
-  const signalMarkers: SignalMarker[] = useMemo(() => {
+  const signalMarkers: TVMarker[] = useMemo(() => {
     if (!overlays.includes("signals") || !analysis) return [];
-    if (analysis.signal === "NEUTRAL") return [];
+    if (analysis.signal === "NEUTRAL" || analysis.signal === "WAIT" || analysis.signal === "INVALID" || analysis.signal === "HIGH_RISK") return [];
+    const isBuy = analysis.signal === "BUY" || analysis.signal === "PENDING_BUY";
     return [
       {
         index: candles.length - 1,
-        side: analysis.signal === "BUY" ? "BUY" : "SELL",
-        label: analysis.signal === "BUY" ? "BUY" : "SELL",
+        side: isBuy ? "BUY" : "SELL",
+        label: analysis.signal,
+        price: analysis.entryPrice,
       },
     ];
   }, [analysis, candles.length, overlays]);
 
-  const hLines = useMemo(() => {
-    if (!analysis || analysis.signal === "NEUTRAL") return [];
+  const hLines: TVHLine[] = useMemo(() => {
+    if (!analysis || analysis.signal === "NEUTRAL" || analysis.signal === "WAIT" || analysis.signal === "INVALID" || analysis.signal === "HIGH_RISK") return [];
     return [
       { price: analysis.entryPrice, color: colors.gold, label: "Entry" },
       { price: analysis.stopLoss, color: colors.bearish, label: "SL", dashed: true },
@@ -322,19 +322,17 @@ export default function ChartsScreen() {
               <Text style={{ color: colors.bearish }}>{String(candlesQ.error?.message ?? "Failed")}</Text>
             </View>
           ) : (
-            <PriceChart
+            <TradingViewChart
               candles={candles}
               width={chartW}
               height={chartH}
-              overlay={overlayLines}
+              overlays={overlayLines}
               markers={signalMarkers}
               fvgZones={fvgOverlay}
               warZone={warOverlay}
               fibLevels={fibOverlay}
-              swingHighs={swingHighs}
-              swingLows={swingLows}
               hLines={hLines}
-              initialVisibleBars={120}
+              isDark={colors.background === "#0a0a0a"}
             />
           )}
         </Card>
@@ -348,9 +346,11 @@ export default function ChartsScreen() {
                   styles.bigSig,
                   {
                     backgroundColor:
-                      analysis.signal === "BUY"
+                      analysis.signal === "BUY" || analysis.signal === "PENDING_BUY"
                         ? colors.bullish
-                        : analysis.signal === "SELL"
+                        : analysis.signal === "SELL" || analysis.signal === "PENDING_SELL"
+                        ? colors.bearish
+                        : analysis.signal === "HIGH_RISK"
                         ? colors.bearish
                         : colors.muted,
                     borderRadius: radius - 6,
@@ -362,6 +362,16 @@ export default function ChartsScreen() {
                     ? t("signal_buy")
                     : analysis.signal === "SELL"
                     ? t("signal_sell")
+                    : analysis.signal === "PENDING_BUY"
+                    ? t("pending_buy")
+                    : analysis.signal === "PENDING_SELL"
+                    ? t("pending_sell")
+                    : analysis.signal === "WAIT"
+                    ? t("wait")
+                    : analysis.signal === "INVALID"
+                    ? t("invalid")
+                    : analysis.signal === "HIGH_RISK"
+                    ? t("high_risk")
                     : t("signal_neutral")}
                 </Text>
               </View>
@@ -375,7 +385,7 @@ export default function ChartsScreen() {
               </View>
             </View>
 
-            {analysis.signal !== "NEUTRAL" && (
+            {analysis.signal !== "NEUTRAL" && analysis.signal !== "WAIT" && analysis.signal !== "INVALID" && analysis.signal !== "HIGH_RISK" && (
               <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 10, gap: 8 }}>
                 <Stat label={t("entry_price")} value={analysis.entryPrice.toFixed(2)} color={colors.foreground} />
                 <Stat label={t("stop_loss")} value={analysis.stopLoss.toFixed(2)} color={colors.bearish} />

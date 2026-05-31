@@ -4,6 +4,7 @@ import { runAIAnalysis } from "./aiAnalysis";
 import type { QFAResult } from "./quantumFlow";
 import { ema, rsi, macd, atr, bollinger, stochastic } from "./indicators";
 import { detectPatterns, patternBias, type DetectedPattern } from "./patterns";
+import { detectChartPatterns, type ChartPattern } from "./chartPatterns";
 
 // =============================================================
 // Advanced Analysis — wraps the Quantum Flow engine and adds the
@@ -77,11 +78,17 @@ export interface AdvancedAnalysis {
   // Patterns
   patterns: DetectedPattern[];
   patternBias: number;
+  // Chart patterns
+  chartPatterns: ChartPattern[];
+  chartPatternBias: number;
   // Factor board
   factors: FactorScore[];
   factorScore: number; // -100..+100
   // Suggested pending order (if better entry exists)
   pendingOrder: PendingOrder | null;
+  // Breakeven / trailing suggestions
+  breakevenSuggestion: string | null;
+  trailingSuggestion: string | null;
   // Overall
   rating: Rating;
   ratingScore: number; // 0..100
@@ -140,7 +147,9 @@ export function runAdvancedAnalysis(
   // ---------- Confirmation / cancellation ----------
   const confirmConditions: string[] = [];
   const cancelConditions: string[] = [];
-  if (base.signal === "BUY") {
+  const isBuy = base.signal === "BUY" || base.signal === "PENDING_BUY";
+  const isSell = base.signal === "SELL" || base.signal === "PENDING_SELL";
+  if (isBuy) {
     confirmConditions.push(
       lang === "ar"
         ? `إغلاق شمعة فوق ${entry.toFixed(2)} مع زخم RSI > 50`
@@ -161,7 +170,7 @@ export function runAdvancedAnalysis(
         ? "ظهور شمعة ابتلاع بيعي قوي تحت السعر"
         : "Strong bearish engulfing forms below price",
     );
-  } else if (base.signal === "SELL") {
+  } else if (isSell) {
     confirmConditions.push(
       lang === "ar"
         ? `إغلاق شمعة تحت ${entry.toFixed(2)} مع زخم RSI < 50`
@@ -293,6 +302,9 @@ export function runAdvancedAnalysis(
   // ---------- Patterns ----------
   const patterns = detectPatterns(candles).slice(0, 4);
   const pBias = patternBias(patterns);
+  // Chart patterns
+  const chartPatterns = detectChartPatterns(candles, settings.swingLength).slice(0, 3);
+  const chartPatternBias = chartPatterns.reduce((sum, p) => sum + (p.side === "BULL" ? p.strength : p.side === "BEAR" ? -p.strength : 0), 0);
 
   // ---------- Factor scoring board ----------
   const e20 = ema(closes, 20)[lastIdx];
@@ -512,6 +524,20 @@ export function runAdvancedAnalysis(
     }
   }
 
+  // ---------- Breakeven & trailing suggestions ----------
+  const breakevenSuggestion =
+    base.signal !== "NEUTRAL" && base.signal !== "WAIT" && base.signal !== "INVALID" && base.signal !== "HIGH_RISK"
+      ? (lang === "ar"
+        ? `اقتراح: نقل الوقف إلى نقطة التعادل ${entry.toFixed(2)} عندما يتجاوز السعر ${(entry + (entry - base.stopLoss) * 0.5).toFixed(2)}`
+        : `Suggestion: Move SL to breakeven ${entry.toFixed(2)} when price crosses ${(entry + (entry - base.stopLoss) * 0.5).toFixed(2)}`)
+      : null;
+  const trailingSuggestion =
+    base.signal !== "NEUTRAL" && base.signal !== "WAIT" && base.signal !== "INVALID" && base.signal !== "HIGH_RISK" && settings.useTrailing
+      ? (lang === "ar"
+        ? `الوقف المتتبع مفعّل: ملاحقة الوقف بمتواصلي على ATR مع كل انتقال مفادي ${base.atr.toFixed(2)}`
+        : `Trailing stop active: trail at ATR ${base.atr.toFixed(2)} behind each major move`)
+      : null;
+
   // ---------- Overall rating ----------
   const ratingScore = Math.round(
     Math.max(0, Math.min(100, base.confidence * 0.55 + Math.abs(factorScore) * 0.35 + Math.abs(pBias) * 0.1)),
@@ -564,9 +590,13 @@ export function runAdvancedAnalysis(
     liquidityZones: liqDedup,
     patterns,
     patternBias: pBias,
+    chartPatterns,
+    chartPatternBias,
     factors,
     factorScore,
     pendingOrder,
+    breakevenSuggestion,
+    trailingSuggestion,
     rating,
     ratingScore,
     qualityLabelAr,

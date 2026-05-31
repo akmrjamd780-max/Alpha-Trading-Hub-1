@@ -59,6 +59,7 @@ export function runAIAnalysis(
     fibTp1: settings.fibTp1,
     fibTp2: settings.fibTp2,
     useTrailing: settings.useTrailing,
+    signalStyle: settings.signalStyle,
   };
   return analyzeQuantumFlow(candles, qfaSettings, lang);
 }

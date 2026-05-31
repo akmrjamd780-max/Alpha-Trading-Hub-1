@@ -49,16 +49,20 @@ export function AnalysisCard({
   const sigColor = sig === "BUY" ? colors.bullish : sig === "SELL" ? colors.bearish : colors.gold;
   const sigText =
     sig === "BUY"
-      ? lang === "ar"
-        ? "شراء"
-        : "BUY"
+      ? lang === "ar" ? "شراء" : "BUY"
       : sig === "SELL"
-        ? lang === "ar"
-          ? "بيع"
-          : "SELL"
-        : lang === "ar"
-          ? "محايد"
-          : "NEUTRAL";
+        ? lang === "ar" ? "بيع" : "SELL"
+        : sig === "PENDING_BUY"
+          ? lang === "ar" ? "شراء معلق" : "PENDING BUY"
+          : sig === "PENDING_SELL"
+            ? lang === "ar" ? "بيع معلق" : "PENDING SELL"
+            : sig === "WAIT"
+              ? lang === "ar" ? "انتظر" : "WAIT"
+              : sig === "INVALID"
+                ? lang === "ar" ? "غير صالح" : "INVALID"
+                : sig === "HIGH_RISK"
+                  ? lang === "ar" ? "خطر عالي" : "HIGH RISK"
+                  : lang === "ar" ? "محايد" : "NEUTRAL";
 
   return (
     <View style={{ gap: 12 }}>
@@ -150,8 +154,26 @@ export function AnalysisCard({
         </Card>
       )}
 
+      {/* Trend strength */}
+      <Card>
+        <View style={[{ flexDirection: rowDir, alignItems: "center", gap: 8 }]}>
+          <Feather name="activity" size={14} color={colors.gold} />
+          <Text style={[s.cardTitle, { color: colors.foreground, textAlign: dirAlign, flex: 1 }]}>
+            {t("trend_strength")}
+          </Text>
+          <Text style={{ color: colors.gold, fontSize: 11, fontFamily: "Inter_700Bold" }}>
+            {a.base.trendStrength === "WEAK" ? t("weak") : a.base.trendStrength === "MEDIUM" ? t("medium") : a.base.trendStrength === "STRONG" ? t("strong") : t("very_strong")}
+          </Text>
+        </View>
+        <View style={[{ flexDirection: rowDir, alignItems: "center", gap: 6, marginTop: 6 }]}>
+          <Text style={{ color: colors.mutedForeground, fontSize: 11 }}>
+            {t("active_filters")}: {a.base.mandatoryPassed}/{a.base.mandatoryTotal}
+          </Text>
+        </View>
+      </Card>
+
       {/* Trade plan */}
-      {sig !== "NEUTRAL" && (
+      {sig !== "NEUTRAL" && sig !== "WAIT" && sig !== "INVALID" && sig !== "HIGH_RISK" && (
         <Card>
           <View style={[{ flexDirection: rowDir, alignItems: "center", gap: 8 }]}>
             <Feather name="target" size={14} color={colors.gold} />
@@ -197,7 +219,7 @@ export function AnalysisCard({
         </View>
       </Card>
 
-      {/* Patterns */}
+      {/* Candlestick Patterns */}
       <Card>
         <View style={[{ flexDirection: rowDir, alignItems: "center", gap: 8 }]}>
           <Feather name="bar-chart-2" size={14} color={colors.gold} />
@@ -227,6 +249,49 @@ export function AnalysisCard({
                     {lang === "ar" ? p.nameAr : p.nameEn}
                   </Text>
                   <Text style={{ color: colors.mutedForeground, fontSize: 11, textAlign: dirAlign, writingDirection: isRTL ? "rtl" : "ltr" }}>
+                    {lang === "ar" ? p.descAr : p.descEn}
+                  </Text>
+                </View>
+                <Text style={{ color: colors.gold, fontSize: 11, fontFamily: "Inter_700Bold" }}>{p.strength}%</Text>
+              </View>
+            ))}
+          </View>
+        )}
+      </Card>
+
+      {/* Chart Patterns */}
+      <Card>
+        <View style={[{ flexDirection: rowDir, alignItems: "center", gap: 8 }]}>
+          <Feather name="activity" size={14} color={colors.gold} />
+          <Text style={[s.cardTitle, { color: colors.foreground, textAlign: dirAlign, flex: 1 }]}>
+            {t("chart_patterns")}
+          </Text>
+        </View>
+        {a.chartPatterns.length === 0 ? (
+          <Text style={{ color: colors.mutedForeground, marginTop: 8, textAlign: dirAlign, writingDirection: isRTL ? "rtl" : "ltr" }}>
+            {t("no_chart_patterns")}
+          </Text>
+        ) : (
+          <View style={{ marginTop: 8, gap: 8 }}>
+            {a.chartPatterns.map((p, i) => (
+              <View key={i} style={[{ flexDirection: rowDir, alignItems: "center", gap: 8 }]}>
+                <View
+                  style={[
+                    s.dotSm,
+                    {
+                      backgroundColor:
+                        p.side === "BULL" ? colors.bullish : p.side === "BEAR" ? colors.bearish : colors.gold,
+                    },
+                  ]}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.foreground, fontFamily: "Inter_700Bold", fontSize: 13, textAlign: dirAlign, writingDirection: isRTL ? "rtl" : "ltr" }}>
+                    {lang === "ar" ? p.labelAr : p.labelEn}
+                  </Text>
+                  <Text style={{ color: colors.mutedForeground, fontSize: 10, textAlign: dirAlign, writingDirection: isRTL ? "rtl" : "ltr" }}>
+                    {t("key_level")}: {p.keyLevel.toFixed(2)} · {t("pattern_target")}: {p.targetHigh.toFixed(2)}-{p.targetLow.toFixed(2)}
+                  </Text>
+                  <Text style={{ color: colors.mutedForeground, fontSize: 10, textAlign: dirAlign, writingDirection: isRTL ? "rtl" : "ltr" }}>
                     {lang === "ar" ? p.descAr : p.descEn}
                   </Text>
                 </View>
@@ -321,6 +386,36 @@ export function AnalysisCard({
               <BulletRow key={i} text={c} color={colors.warning} dirAlign={dirAlign} rowDir={rowDir} isRTL={isRTL} fg={colors.foreground} />
             ))}
           </View>
+        </Card>
+      )}
+
+      {/* Breakeven suggestion */}
+      {a.breakevenSuggestion && (
+        <Card>
+          <View style={[{ flexDirection: rowDir, alignItems: "center", gap: 8 }]}>
+            <Feather name="shield" size={14} color={colors.bullish} />
+            <Text style={[s.cardTitle, { color: colors.foreground, textAlign: dirAlign, flex: 1 }]}>
+              {t("be_suggestion")}
+            </Text>
+          </View>
+          <Text style={{ color: colors.foreground, marginTop: 8, fontSize: 12, fontFamily: "Inter_500Medium", textAlign: dirAlign, writingDirection: isRTL ? "rtl" : "ltr" }}>
+            {a.breakevenSuggestion}
+          </Text>
+        </Card>
+      )}
+
+      {/* Trailing suggestion */}
+      {a.trailingSuggestion && (
+        <Card>
+          <View style={[{ flexDirection: rowDir, alignItems: "center", gap: 8 }]}>
+            <Feather name="wind" size={14} color={colors.gold} />
+            <Text style={[s.cardTitle, { color: colors.foreground, textAlign: dirAlign, flex: 1 }]}>
+              {t("trail_suggestion")}
+            </Text>
+          </View>
+          <Text style={{ color: colors.foreground, marginTop: 8, fontSize: 12, fontFamily: "Inter_500Medium", textAlign: dirAlign, writingDirection: isRTL ? "rtl" : "ltr" }}>
+            {a.trailingSuggestion}
+          </Text>
         </Card>
       )}
     </View>
