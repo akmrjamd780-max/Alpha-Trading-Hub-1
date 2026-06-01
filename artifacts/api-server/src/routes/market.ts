@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { gateway } from "@/lib/gateway";
+import { gateway } from "../lib/gateway";
 
 const router: IRouter = Router();
 

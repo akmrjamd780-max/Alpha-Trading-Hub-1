@@ -5,8 +5,8 @@
 
 import type { WebSocket as WebSocketType } from "ws";
 import { WebSocketServer } from "ws";
-import { logger } from "@/lib/logger";
-import { gateway } from "@/lib/gateway";
+import { logger } from "../lib/logger";
+import { gateway } from "../lib/gateway";
 
 const HEARTBEAT_INTERVAL = 30_000; // 30s
 const STREAM_INTERVAL = 5_000; // 5s price updates

@@ -4,9 +4,9 @@
  * Exposes unified API for all data consumers.
  */
 
-import { logger } from "@/lib/logger";
-import { instaForexProvider } from "@/lib/gateway/providers/instaforex";
-import { yahooProvider } from "@/lib/gateway/providers/yahoo";
+import { logger } from "../logger";
+import { instaForexProvider } from "./providers/instaforex";
+import { yahooProvider } from "./providers/yahoo";
 import type {
   DataProvider,
   ChartResponse,
@@ -15,7 +15,7 @@ import type {
   ProviderStatus,
   Interval,
   Range,
-} from "@/lib/gateway/types";
+} from "./types";
 
 const providers: DataProvider[] = [instaForexProvider, yahooProvider];
 

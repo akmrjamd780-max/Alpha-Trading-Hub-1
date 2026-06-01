@@ -3,7 +3,7 @@
  * Fallback provider using Yahoo Finance v8 chart API.
  */
 
-import { logger } from "@/lib/logger";
+import { logger } from "../../logger";
 import type {
   DataProvider,
   Candle,
@@ -15,7 +15,7 @@ import type {
   ProviderStatus,
   Interval,
   Range,
-} from "@/lib/gateway/types";
+} from "../types";
 
 const YF_HOSTS = [
   "https://query2.finance.yahoo.com/v8/finance/chart",

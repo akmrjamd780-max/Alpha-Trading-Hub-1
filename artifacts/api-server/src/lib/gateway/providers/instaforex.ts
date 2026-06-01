@@ -5,7 +5,7 @@
  * API key: supports both ?key= and ?api_key= params
  */
 
-import { logger } from "@/lib/logger";
+import { logger } from "../../logger";
 import type {
   DataProvider,
   Candle,
@@ -17,7 +17,7 @@ import type {
   ProviderStatus,
   Interval,
   Range,
-} from "@/lib/gateway/types";
+} from "../types";
 
 const API_KEY = process.env["INSTAFOREX_API_KEY"] ?? "5Gl2M6#E";
 
