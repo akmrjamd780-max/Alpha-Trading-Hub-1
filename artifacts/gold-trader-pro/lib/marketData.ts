@@ -22,6 +22,11 @@ export interface Quote {
   ts: number;
   currency: string;
   marketState: string;
+  source?: string;        // "instaforex" | "stooq"
+  fetchedAt?: string;     // ISO timestamp
+  spread?: number;
+  bid?: number;
+  ask?: number;
 }
 
 export interface MultiQuote {

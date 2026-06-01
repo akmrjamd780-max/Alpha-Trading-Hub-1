@@ -1,0 +1,658 @@
+أنت الآن فريق هندسي كامل مسؤول عن إصلاح طبقة البيانات في المنصة إصلاحًا فعليًا، لا شكليًا، ولا تجريبيًا، ولا ادعائيًا.
+
+المشكلة الحالية:
+- أسعار الذهب وباقي الأدوات في المنصة متأخرة.
+- الواجهة ما زالت تُظهر أن مصدر البيانات هو Yahoo Finance.
+- تم الادعاء سابقًا بأن InstaForex تم دمجه، لكن الواقع يثبت أن المنصة ما زالت تعتمد على Yahoo أو على كاش/إعداد افتراضي مرتبط به.
+
+الهدف النهائي:
+- جعل InstaForex هو مصدر البيانات الأساسي والوحيد الفعلي لأسعار السوق داخل المنصة.
+- إزالة كل أثر عملي لـ Yahoo Finance من المسار التنفيذي للبيانات.
+- تحديث الواجهة والإعدادات وقاعدة البيانات والـ backend بحيث تعكس مصدر البيانات الحقيقي بدلًا من مصدر وهمي أو قديم.
+- ضمان أن السعر المعروض في المنصة يطابق المصدر المفعّل الجديد، مع تقليل التأخير إلى الحد الذي يسمح به مزوّد InstaForex نفسه.
+
+ممنوعات صارمة:
+- لا تدّعِ أن التحويل تم قبل التحقق من ذلك في الكود والتشغيل.
+- لا تترك أي fallback إلى Yahoo إلا إذا كان معطّلًا افتراضيًا ومعلَنًا بوضوح.
+- لا تغيّر التسمية في الواجهة فقط وتترك المنطق الداخلي على Yahoo.
+- لا تستخدم قيمة ثابتة أو mock أو sample data بدلًا من مصدر السوق الحقيقي.
+- لا تُبقِ أي cache أو config أو env أو database row أو hardcoded label يشير إلى Yahoo.
+- لا تخلط بين API الأسعار وAPI الحسابات أو الصفقات.
+
+المطلوب تنفيذه بدقة:
+
+1) فحص شامل للمشروع
+- افحص كامل المستودع وابحث عن كل ظهور لـ:
+  Yahoo
+  yfinance
+  yahoo finance
+  finance.yahoo
+  market data provider
+  source provider
+  default provider
+  fallback provider
+  cached price
+  stale price
+- حدّد كل ملف وكل سطر وكل طبقة ما زالت تربط المنصة بـ Yahoo مباشرة أو غير مباشرة.
+
+2) استبدال مزوّد البيانات
+- أنشئ أو عدّل طبقة واضحة باسم:
+  instaforexProvider
+  instaforexMarketDataService
+  instaforexQuotesAdapter
+- اجعل هذه الطبقة هي المصدر الأساسي للأسعار الحية.
+- أزل أي اعتماد تنفيذي على Yahoo من مسار جلب الأسعار.
+
+3) استخدام واجهات InstaForex الرسمية الصحيحة
+اعتمد فقط على الروابط الرسمية التالية:
+
+https://www.instaforex.com/partners/en/quotes_description/
+https://quotes.instaforex.com/docs
+https://quotes.instaforex.com/api/quotesTick
+https://quotes.instaforex.com/api/quotesList
+https://www.instaforex.com/partners/en/api_charts/
+
+التفسير التنفيذي:
+- استخدم Quotes List لاستخراج الرموز المتاحة.
+- استخدم Quotes Tick لجلب التحديثات اللحظية أو شبه اللحظية.
+- استخدم Charts API فقط إذا احتجت OHLC أو بيانات الشموع.
+- لا تعتمد على أي صفحة غير مخصصة للأسعار إذا كانت لا تُنتج tick data أو price feed حقيقي.
+
+4) ربط الرموز
+- أنشئ mapping واضحًا بين رموز المنصة ورموز InstaForex.
+- تأكد من أن GOLD/XAUUSD أو أي تسمية للذهب داخل المنصة تُربط بالرمز الصحيح في InstaForex.
+- راجع كل الأدوات المدعومة:
+  - المعادن
+  - العملات
+  - المؤشرات
+  - أي رموز أخرى معروضة في المنصة
+- أي رمز لا يملك mapping صحيحًا يجب إظهاره كمشكلة صريحة بدلًا من إرجاع بيانات خاطئة.
+
+5) الإعدادات والواجهة
+- غيّر قيمة data source الظاهرة في settings من Yahoo إلى InstaForex.
+- حدّث كل label, dropdown, tooltip, badge, status text, empty state, log message.
+- إذا كانت القيمة محفوظة في قاعدة البيانات، حدّثها أو هاجرها.
+- إذا كانت القيمة محفوظة في localStorage أو sessionStorage أو cache، امسحها أو هاجرها.
+- إذا كان هناك default hardcoded provider، غيّره بالكامل.
+- أي واجهة تقول Yahoo بعد الإصلاح تُعدّ فشلًا.
+
+6) طبقة الكاش والتحديث
+- راجع كل cache layer:
+  - in-memory cache
+  - Redis
+  - browser cache
+  - SW cache
+  - API cache
+- تأكد أن الكاش لا يعيد إحياء Yahoo بعد تبديل المصدر.
+- أعد ضبط invalidation logic بحيث يصبح مصدر InstaForex هو المرجع النهائي.
+- إذا كان هناك TTL، يجب أن يكون متوافقًا مع طبيعة الأسعار السريعة.
+
+7) التحقق والاختبارات
+أضف اختبارات صريحة تثبت ما يلي:
+- المنصة تستدعي InstaForex بدل Yahoo.
+- الواجهة تعرض InstaForex كمصدر نشط.
+- السعر المعروض يأتي من provider الصحيح.
+- لا يوجد fallback صامت إلى Yahoo.
+- أي فشل في InstaForex يظهر كفشل واضح وليس كبيانات قديمة.
+- بعد restart لا يعود النظام تلقائيًا إلى Yahoo.
+- أي endpoint يزود الشارت أو لوحة الأسعار يعكس المصدر الجديد.
+
+8) التسجيل والمراقبة
+- أضف logging يوضح:
+  - اسم المصدر
+  - الرمز المطلوب
+  - الرمز المُطابق بعد mapping
+  - وقت التحديث
+  - نجاح أو فشل الجلب
+- أضف health check لمصدر InstaForex.
+- أضف error handling واضحًا عند فشل المصدر أو عدم توفر الرمز.
+
+9) المعايير النهائية للنجاح
+لا تعتبر المهمة منجزة إلا إذا تحقق التالي:
+- الواجهة تُظهر InstaForex كمصدر البيانات.
+- backend يستخدم InstaForex فعليًا في جلب الأسعار.
+- لا يظهر Yahoo في الإعدادات أو في التدفق التنفيذي.
+- لا توجد بيانات سعرية قديمة معروضة على أنها حية.
+- تم اختبار المنصة بعد التعديل، وليس فقط تعديل النصوص.
+- تم توثيق الملفات المعدلة بدقة.
+
+10) مخرجات مطلوبة في النهاية
+أخرج تقريرًا نهائيًا يحتوي على:
+- قائمة الملفات التي تم تعديلها
+- وصف واضح لكل تعديل
+- اسم الـ endpoint أو الخدمة التي أصبحت مسؤولة عن الأسعار
+- ما إذا كان أي fallback ما زال موجودًا
+- ما إذا كانت هناك أجزاء لم تُحوَّل بعد ولماذا
+- نتيجة التحقق من التشغيل
+- أي أخطاء متبقية مع تفسير مباشر
+
+11) مبدأ التنفيذ
+- افحص، عدّل، اختبر، ثم أعلن النتيجة.
+- لا تعلن النجاح قبل وجود دليل فعلي في الكود أو الاختبار.
+- إذا وجدت تعارضًا بين الواجهة والـ backend، أصلح الاثنين معًا.
+- إذا احتجت تغييرًا معماريًا، قم به بدل ترقيع سطحي.
+واصلح استقرار التطبيق وجميع الاخطاء 
+ابدأ الآن بتنفيذ الإصلاح الكامل، ثم أعد تقريرًا نهائيًا صريحًا يثبت أن المنصة أصبحت تعتمد InstaForex فعليًا لا اسميًا. 
+وايضا بعد ان تنتهي من اصلاح كل ما سبق قم باضافة او بناء محرك او استراتيجية او مؤشر تحليل اضافي بناء على مواصفات Pine Script v6 التقنية — Developer Spec
+مؤشر مركّب متعدد الفريمات يدمج هيكل السوق، العرض والطلب، الدعم والمقاومة، السيولة، الحجم، فيبوناتشي
+1) تعريف المنتج
+اسم المنتج: Market Confluence Atlas Indicator
+نوعه: indicator() على Pine Script v6، مع overlay = true لأن المؤشر يرسم على الشارت نفسه، وليس في نافذة منفصلة. Pine Script v6 يدعم تشغيل الطلبات الديناميكية افتراضيًا داخل request.*()، كما يدعم تنفيذها داخل الشروط والحلقات والدوال المصدَّرة عند الحاجة. 
+الغرض:
+بناء محرك تحليل بصري/منطقي يرسم:
+هيكل السوق.
+مناطق العرض والطلب.
+الدعم والمقاومة.
+السيولة.
+الحجم النسبي.
+فيبوناتشي.
+مناطق دخول/إبطال/أهداف.
+نسبة ثقة.
+سبب مختصر للإشارة.
+توافق متعدد الفريمات. 
+
+2) نموذج التنفيذ المطلوب
+المؤشر يجب أن يعمل وفق نموذج State Machine + Scoring Engine:
+يقرأ الفريمات الأعلى أولًا لتكوين السياق.
+يحدد البنية الحالية.
+يكتشف المناطق المهمة.
+يقيّم السيولة والحجم.
+يرسم فيبوناتشي كطبقة تأكيد.
+يحسب التوافق بين الفريمات.
+يخرج إشارة واحدة فقط: BUY أو SELL أو WAIT.
+يضيف Confidence % وReason Summary وSL/TP.
+Pine Script يعمل عبر تنفيذ تسلسلي على البارات التاريخية واللحظية، وتصبح نتائج كل بار جزءًا من السلاسل الزمنية اللاحقة؛ لذلك يجب بناء المنطق بحيث يكون متماسكًا عبر الزمن وليس مبنيًا على لقطة واحدة فقط. 
+3) القيود التقنية التي يجب احترامها
+3.1 قيود الطلبات متعددة الفريم
+Pine v6 يجعل request.*() ديناميكيًا افتراضيًا.
+الطلبات يمكن أن تعمل داخل الشروط والحلقات.
+لكن عدد الـ securities في السكربت محدود، والحد الموثق هو 40 security requests تقريبًا/فعليًا بعد التحسينات والترجمة. 
+متطلب تصميمي:
+لا يجوز أن يتجاوز المؤشر عدد الفريمات/الطلبات اللازمة حدًا يقود إلى error. يجب دمج أكثر من وظيفة داخل نفس request حيثما أمكن.
+3.2 قيود الرسم
+الحد الافتراضي لعرض الخطوط/الصناديق/الملصقات/الـ polylines هو آخر 50 عنصرًا، ويمكن رفعه عبر max_lines_count وmax_boxes_count وmax_labels_count وmax_polylines_count.
+الحد الأقصى الموثق تقنيًا: 500 line IDs, 500 box IDs, 500 label IDs, و100 polyline IDs. 
+متطلب تصميمي:
+يجب تطبيق Garbage-Collection Logic داخلي: حذف/إعادة تدوير الكائنات القديمة بدل إنشاء كائنات جديدة بلا توقف.
+3.3 قيود التموضع
+عند استخدام xloc.bar_index، لا يمكن أن يكون موقع الكائن أبعد من 9999 بارًا في الماضي أو 500 بار في المستقبل بالنسبة للبار الحالي. وعند استخدام الوقت، يجب ضبط xloc.bar_time. 
+متطلب تصميمي:
+كل المنطقة/الخط/الملصق الذي سيُمدَّد للمستقبل يجب أن يُدار بهذا القيد، وإلا سيظهر خطأ تموضع.
+3.4 قيود الذاكرة
+الطلبات التي تُرجع مجموعات/كائنات أو طلبات كثيفة غير محسوبة قد تؤدي إلى Memory limits exceeded. TradingView يذكر صراحة أن أكثر الأسباب شيوعًا هو إساءة استخدام request.*()، خاصة مع الكائنات/المجموعات أو التحديثات غير الضرورية. 
+متطلب تصميمي:
+لا تُرجع arrays ضخمة أو هياكل معقدة من طلبات HTF/LTF إلا عند الضرورة.
+4) فلسفة anti-repaint المطلوبة
+4.1 قاعدة HTF
+في الطلبات ذات الفريم الأعلى، TradingView يوصي باستخدام القيم المؤكدة، وأقوى نمط موصى به هو إزاحة التعبير ببار واحد مثل close[1] مع lookahead = barmerge.lookahead_on لتجنّب إعادة الرسم على historical vs realtime bars. 
+متطلب تصميمي إلزامي:
+كل طبقة MTF يجب أن تملك خيارين:
+Confirmed HTF mode
+Realtime HTF mode
+الافتراضي يجب أن يكون Confirmed.
+4.2 قاعدة LTF
+TradingView يوضح أن request.security() يمكنه جلب بيانات من فريم أدنى لكن بشكل محدود، بينما request.security_lower_tf() هو الخيار الأنسب للـ intrabar analysis لأنه يعيد array بكل intrabars المتاحة داخل البار. 
+متطلب تصميمي:
+إذا احتجت:
+sweep داخل البار،
+حجم intrabar،
+أو confirmation دقيق جدًا،
+فالأصل هو request.security_lower_tf()، لا request.security() وحده.
+5) بنية المؤشر Modules
+المؤشر يجب أن يُفكك داخليًا إلى الوحدات التالية:
+Context Engine
+Structure Engine
+Trend Engine
+SupplyDemand Engine
+SupportResistance Engine
+Liquidity Engine
+Volume Engine
+Fibonacci Engine
+MTF Confluence Engine
+Signal Engine
+Risk Engine
+Dashboard Engine
+كل وحدة تُخرج:
+حالة نصية.
+درجة.
+كائنات مرسومة.
+Flags قابلة للاستخدام في الوحدات التالية.
+6) المدخلات Inputs
+6.1 إعدادات عامة
+showDashboard
+showZones
+showStructure
+showLiquidity
+showVolume
+showFib
+showEntrySLTP
+showReasons
+showSignals
+dashboardMode = COMPACT | FULL
+6.2 إعدادات الفريمات
+htf1
+htf2
+entryTf
+currentTf = timeframe.period
+useConfirmedHTF = true
+useLTFConfirmation = true
+6.3 إعدادات الهيكل
+swingLength
+pivotLeft
+pivotRight
+bosSensitivity
+chochSensitivity
+6.4 إعدادات الاتجاه
+emaFastLen
+emaMidLen
+emaSlowLen
+trendMethod = MA_CROSS | MA_SLOPE | COMBINED
+6.5 إعدادات العرض والطلب
+zoneLookback
+baseCandleMax
+minImpulseATR
+zoneExtendBars
+zonePaddingATR
+strongZoneThreshold
+mediumZoneThreshold
+6.6 إعدادات الدعم والمقاومة
+srLookback
+srMinTouches
+srMergeTolerance
+srStrengthThresholdStrong
+srStrengthThresholdMedium
+6.7 إعدادات السيولة
+liqLookback
+equalHighTol
+equalLowTol
+sweepBufferATR
+liquidityClusterMinCount
+6.8 إعدادات الحجم
+volumeLen
+volumeSpikeMult
+useRelativeVolume
+useTickVolumeProxy
+6.9 إعدادات فيبوناتشي
+fibAnchorMode = LAST_SWING | LAST_IMPULSE
+fibLevelsEnabled
+fibExtensionsEnabled
+6.10 إعدادات القرار
+minConfidenceToSignal
+rr1
+rr2
+rr3
+slBufferATR
+signalConflictPolicy = BLOCK | DEGRADE | ALLOW_WITH_WARNING
+7) المخرجات Outputs
+7.1 الحالة العامة
+trendState
+structureState
+zoneState
+liquidityState
+volumeState
+mtfState
+signalState
+7.2 القيم الرقمية
+confidenceScore من 0 إلى 100
+trendScore
+structureScore
+zoneScore
+liquidityScore
+volumeScore
+mtfScore
+7.3 القيم التنفيذية
+entryPrice
+stopLossPrice
+takeProfit1
+takeProfit2
+takeProfit3
+invalidationPrice
+7.4 النصوص
+reasonText
+signalLabelText
+dashboardText
+8) مواصفات كل Engine
+8.1 Context Engine
+المهمة: تصنيف السوق أوليًا:
+صاعد
+هابط
+عرضي
+انتقالي
+المدخلات:
+متوسطات الحركة.
+ميل المتوسطات.
+بنية القمم والقيعان.
+التوافق مع الفريم الأعلى.
+المنطق:
+إذا كان السعر فوق المتوسطات الأساسية مع ميل صاعد وترتيب قمم/قيعان صاعد → BULLISH.
+إذا كان العكس → BEARISH.
+إذا كان التداخل عاليًا والاتجاه غير نظيف → RANGE.
+إذا ظهرت بوادر انتقال هيكلي → TRANSITION.
+المخرجات: trendState, contextScore.
+8.2 Structure Engine
+المهمة: استخراج:
+HH / HL / LH / LL
+BOS
+CHoCH
+المنطق:
+BOS = كسر هيكل في نفس اتجاه الاتجاه الحالي.
+CHoCH = كسر هيكل معاكس قد يدل على تغيير اتجاه.
+يجب اعتماد Swings معتمدة، لا قمم/قيعان عشوائية.
+المخرجات:
+lastSwingHigh
+lastSwingLow
+bosUp, bosDown
+chochUp, chochDown
+structureState
+قاعدة تنفيذية: لا تُصدَّر أي إشارة من دون تحديث الهيكل أولًا.
+8.3 Trend Engine
+المهمة: قياس الاتجاه بالمتوسطات والتموضع السعري.
+المنهج:
+EMA Fast / Mid / Slow.
+ميل المتوسط.
+تموضع السعر فوق/تحت المتوسطات.
+تأكيد من البنية.
+المخرجات:
+trendState
+trendStrength
+trendSlopeScore
+قاعدة تنفيذية: إذا تعارض الاتجاه مع الهيكل، تكون أولوية الهيكل أعلى.
+8.4 SupplyDemand Engine
+المهمة: رسم مناطق العرض والطلب كمناطق، لا خطوط فقط.
+المنهج:
+اكتشاف قاعدة قصيرة.
+قياس اندفاع لاحق قوي.
+التحقق من displacement.
+التحقق من عدم استهلاك المنطقة.
+التصنيف:
+STRONG
+MEDIUM
+WEAK
+مقياس القوة المقترح:
+قوة الاندفاع بعد المنطقة
+عدد اللمسات
+عمر المنطقة
+التوافق مع فريم أعلى
+وجود عدم توازن/اندفاع
+وجود sweep قبل الوصول
+الرسم:
+box.new()
+لون أخضر للطلب، أحمر للعرض.
+شفافية أعلى للمناطق الضعيفة.
+8.5 SupportResistance Engine
+المهمة: استخراج خطوط/مناطق الدعم والمقاومة العامة.
+المنهج:
+Pivot highs/lows.
+رد فعل سعري تاريخي.
+عدد اللمسات.
+قوة الرفض/الارتداد.
+التصنيف:
+STRONG
+MEDIUM
+WEAK
+قاعدة تنفيذية:
+كل Supply/Demand قد يعمل كـ Support/Resistance،
+لكن ليس كل Support/Resistance يساوي Supply/Demand مؤسسي.
+8.6 Liquidity Engine
+المهمة: رصد السيولة السفلية والعلوية.
+المنهج:
+Equal Highs
+Equal Lows
+Clustered highs/lows
+Sweep detection
+الإشارة:
+sweepUp
+sweepDown
+buySideLiquidity
+sellSideLiquidity
+القوة:
+HIGH
+MEDIUM
+LOW
+قاعدة تنفيذية: إذا حصل Sweep ثم CHoCH في اتجاه معاكس، فهذا يجب أن يرفع confidenceScore بوضوح.
+8.7 Volume Engine
+المهمة: تقييم القوة النسبية للحركة.
+المنهج:
+مقارنة الحجم الحالي بمتوسط الحجم.
+كشف volume spikes.
+دعم أو نفي الكسر/الاختراق.
+ملاحظة تنفيذية: في الأسواق التي لا تمتلك حجمًا مركزيًا موثوقًا، يجب دعم tick volume proxy أو relative activity proxy. هذا خيار تصميمي، وليس بديلًا عن الحجم الحقيقي في الأسواق التي توفره.
+المخرجات:
+volumeState
+volumeSpike
+relativeVolumeScore
+8.8 Fibonacci Engine
+المهمة: رسم وتصنيف مستويات فيبوناتشي.
+المستويات:
+0.236
+0.382
+0.5
+0.618
+0.786
+1.0
+1.272
+1.618
+القاعدة: فيبوناتشي طبقة تأكيد، لا طبقة قرار منفرد.
+يُحسب وزنه فقط إذا تزامن مع:
+هيكل
+منطقة
+سيولة
+أو حجم.
+8.9 MTF Confluence Engine
+المهمة: قياس التوافق بين الفريمات.
+الأولوية:
+HTF1 = السياق.
+HTF2 = الوزن الثاني.
+Current TF = التكوين الحالي.
+Entry TF = التوقيت.
+الحالات:
+FULL_CONFLUENCE
+PARTIAL_CONFLUENCE
+CONFLICT
+NEUTRAL
+قاعدة تنفيذية: إذا كان HTF الأعلى يعارض الصفقة، يجب:
+إما منع الإشارة،
+أو خفض الثقة،
+أو رفع تحذير واضح،
+بحسب signalConflictPolicy.
+8.10 Signal Engine
+المهمة: إنتاج إشارة موحدة واحدة فقط.
+مخرجات الإشارة:
+BUY_SETUP
+SELL_SETUP
+WAIT
+CONFLICT
+LOW_CONFIDENCE
+شروط BUY SETUP:
+هيكل غير هابط أو CHoCH صاعد.
+المنطقة = Demand أو Support قوية.
+Sweep للسيولة السفلية.
+حجم غير معارض.
+توافق MTF مقبول.
+مجال كافٍ إلى الهدف.
+شروط SELL SETUP:
+هيكل غير صاعد أو CHoCH هابط.
+المنطقة = Supply أو Resistance قوية.
+Sweep للسيولة العلوية.
+حجم غير معارض.
+توافق MTF مقبول.
+مجال كافٍ إلى الهدف.
+قاعدة تنفيذية:
+لا يصدر المؤشر Buy وSell معًا.
+إذا وُجد تعارض، تكون النتيجة WAIT أو CONFLICT.
+8.11 Risk Engine
+المهمة: تحديد SL/TP منطقيين.
+SL:
+خلف آخر Swing Low في الشراء.
+خلف آخر Swing High في البيع.
+مع Buffer مبني على ATR.
+TP:
+TP1: أول منطقة سيولة مقابلة أو أقرب مستوى بنيوي.
+TP2: مستوى وسيط أو امتداد fib.
+TP3: امتداد بعيد أو منطقة سيولة كبيرة.
+مخرجات:
+stopLossPrice
+takeProfit1
+takeProfit2
+takeProfit3
+invalidationPrice
+8.12 Dashboard Engine
+المهمة: عرض الحالة المجمعة.
+يجب أن يتضمن:
+Trend
+Structure
+Zones
+Liquidity
+Volume
+MTF
+Signal
+Confidence
+Reason
+SL/TP
+التنفيذ: استخدم table.new() لأن الجداول لا تُثبت على بارات بعينها، بل تطفو في مساحة العرض، وTradingView يوصي بإنشاء/تحديث الجداول فقط داخل barstate.islast أو بشكل مقيد جدًا، مع استخدام var لحفظ مرجع الجدول. 
+9) سياسة الرسم Rendering Policy
+9.1 الأولويات
+Structure
+Supply/Demand
+Support/Resistance
+Liquidity
+Fibonacci
+Signals
+SL/TP
+Dashboard
+9.2 قواعد اللون
+أخضر = طلب / شراء / دعم صاعد.
+أحمر = عرض / بيع / مقاومة هابطة.
+أصفر/برتقالي = سيولة.
+رمادي = حياد/تعارض.
+ألوان أغمق للمناطق القوية، وأخف للمناطق الضعيفة.
+9.3 قواعد الكثافة
+لا تُعرض كل التفاصيل إذا كان ذلك يسبب clutter.
+يجب اختيار أفضل كائنات فقط.
+يجب حذف القديم قبل إضافة الجديد عند بلوغ الحد.
+10) نظام التقييم Scoring Model
+10.1 الأوزان المقترحة
+Structure: 25
+Trend: 15
+Supply/Demand أو Support/Resistance: 15
+Liquidity: 15
+Volume: 10
+MTF Confluence: 10
+Fibonacci: 5
+Rejection Candle/Price Response: 5
+10.2 النتيجة
+0–39 = ضعيفة
+40–59 = متوسطة
+60–79 = جيدة
+80–100 = قوية جدًا
+10.3 التفاعل مع التعارض
+إذا كان هناك تعارض بين HTF والسياق المحلي:
+إما تخفيض الثقة،
+أو منع الإشارة،
+أو إظهار CONFLICT.
+11) قواعد anti-noise
+المؤشر يجب أن يرفض الإشارة إذا:
+لم يتحدد الاتجاه.
+المنطقة ضعيفة ومستهلكة.
+لا يوجد Sweep أو رد فعل واضح.
+الحجم غير داعم.
+HTF يعارض الصفقة.
+الثقة أقل من الحد الأدنى.
+الهدف قريب جدًا من الدخول.
+12) متطلبات الأداء
+12.1 تنسيق الطلبات
+دمج منطق MTF في أقل عدد ممكن من request.*().
+عدم استدعاء طلبات متطابقة متكررة بلا داعٍ.
+تفعيل dynamic_requests فقط إذا كان مطلوبًا لتنوع السياقات أو داخل الحلقات/الشروط. Pine v6 يسمح بذلك افتراضيًا. 
+12.2 عدد الطلبات
+يجب ضبط العدد الإجمالي حتى لا يتجاوز حد securities الموثق. 
+12.3 تحديثات الجدول
+فقط على آخر بار أو آخر حالة مؤكدة.
+لا تحدّث الجدول في كل tick بلا فائدة.
+12.4 إدارة الذاكرة
+تجنّب arrays العملاقة غير الضرورية.
+لا تكدس كائنات الطلبات داخل سلاسل متكررة.
+استخدم caching منطقي عبر var.
+13) سياسة عدم إعادة الرسم
+الوضع الافتراضي
+useConfirmedHTF = true
+HTF wrapper القياسي
+يجب أن يُبنى في الوثيقة التنفيذية باستخدام النمط الموصى به من TradingView:
+request.security(..., expression[1], lookahead = barmerge.lookahead_on)
+عند الحاجة إلى قيم HTF مؤكدة لا تتغير بعد الإغلاق. 
+LTF wrapper
+إذا كان المطلوب intrabar detection، فالأفضل request.security_lower_tf() لأنه يعيد array بكل intrabars المتاحة داخل البار. 
+14) Pseudo-code هيكلي
+on each bar: read current chart context fetch HTF1 confirmed state fetch HTF2 confirmed state determine current structure determine current trend detect supply/demand zones detect support/resistance detect liquidity pools and sweeps measure relative volume compute fibonacci anchors and levels compute MTF confluence score all components if buy conditions satisfied and confidence >= threshold: emit BUY_SETUP compute entry/sl/tp else if sell conditions satisfied and confidence >= threshold: emit SELL_SETUP compute entry/sl/tp else: emit WAIT render zones, lines, labels, dashboard prune old drawings 
+15) متطلبات واجهة المستخدم UI
+الرسم على الشارت
+Box zones
+Horizontal SR lines
+Liquidity markers
+BOS/CHoCH labels
+Fibonacci levels
+Entry / SL / TP lines
+Buy/Sell markers
+اللوحة
+Trend
+Structure
+Liquidity
+Volume
+MTF alignment
+Signal state
+Confidence %
+Reason text
+التفاعل
+إمكانية إخفاء/إظهار كل طبقة.
+إمكانية تعديل الألوان.
+إمكانية تعديل كثافة الرسم.
+إمكانية اختيار الفريمات الأعلى يدويًا.
+16) معايير القبول Acceptance Criteria
+المؤشر يُعد جاهزًا إذا:
+يرسم البنية بشكل ثابت.
+يفرق بين strong / medium / weak في المناطق.
+يحدد السيولة والسweep.
+يقيّم الحجم نسبيًا.
+يرسم فيبوناتشي تلقائيًا.
+يدمج MTF بشكل واضح.
+لا يتجاوز قيود الأجسام والطلبات.
+لا يرسم منطقًا متناقضًا.
+يصدر إشارة واحدة فقط.
+يخرج SL/TP منطقيين.
+يقدّم confidence score قابلًا للتفسير.
+يظل قابلًا للصيانة والتوسعة.
+17) توصية تنفيذية نهائية للمبرمج
+ترتيب البناء
+Structure Engine
+Trend Engine
+SupplyDemand Engine
+SupportResistance Engine
+Liquidity Engine
+Volume Engine
+Fibonacci Engine
+MTF Engine
+Signal Engine
+Risk Engine
+Dashboard Engine
+السبب
+لأن الإشارة في Pine ليست “زر شراء”، بل نتيجة تراكم حالات. Pine ينفّذ الشفرة بارًا بعد بار، لذلك أي خلل في ترتيب الاعتماد سيُنتج إشارات مضللة أو إعادة رسم غير مرغوبة. 
+18) ملخص مواصفة التسليم
+المطلوب النهائي:
+مؤشر  على الشارت، متعدد الفريمات، ذو محرك قرار داخلي، يرسم كل الطبقات التالية:
+هيكل السوق
+العرض والطلب
+الدعم والمقاومة
+السيولة
+الحجم
+فيبوناتشي
+الإشارة
+SL/TP
+الثقة
+السبب المختصر
+لوحة معلومات ثابتة
+مع:
+التزام صارم بقيود object limits وsecurity limits. 
+استخدام الرسم بطريقة تمنع التكدس. 
+استخدام table فقط بطريقة مقيدة على آخر بار. 
+استخدام HTF/LTF بطريقة تقلل repainting. 
+.مع اضافة بطاقة تحليل وعرض بيانات خاصة به هل فهمت لا تتوقف حتى تنتهي من كل شي وتتحق من عمل كل شيء بنجاح واحترافية هل فهمت ام ستتجاهل ما طلبته 

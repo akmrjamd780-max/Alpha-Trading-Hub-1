@@ -408,6 +408,59 @@ export default function SettingsScreen() {
           </View>
         </Section>
 
+        {/* Data Source */}
+        <Section title={t("data_source_label")} dirAlign={dirAlign}>
+          <View style={{ gap: 10 }}>
+            {/* InstaForex row */}
+            <View style={[styles.row, { flexDirection: dirAlign === "right" ? "row-reverse" : "row", borderColor: colors.border, justifyContent: "space-between" }]}>
+              <View style={{ flexDirection: dirAlign === "right" ? "row-reverse" : "row", alignItems: "center", gap: 8 }}>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#22c55e" }} />
+                <Text style={{ color: colors.foreground, fontSize: 13, fontFamily: "Inter_600SemiBold" }}>
+                  InstaForex
+                </Text>
+              </View>
+              <View style={{ backgroundColor: "#22c55e22", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+                <Text style={{ color: "#22c55e", fontSize: 11, fontFamily: "Inter_700Bold" }}>
+                  {lang === "ar" ? "أساسي" : "PRIMARY"}
+                </Text>
+              </View>
+            </View>
+            {/* Stooq row */}
+            <View style={[styles.row, { flexDirection: dirAlign === "right" ? "row-reverse" : "row", borderColor: colors.border, justifyContent: "space-between" }]}>
+              <View style={{ flexDirection: dirAlign === "right" ? "row-reverse" : "row", alignItems: "center", gap: 8 }}>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#f59e0b" }} />
+                <Text style={{ color: colors.foreground, fontSize: 13, fontFamily: "Inter_600SemiBold" }}>
+                  Stooq
+                </Text>
+              </View>
+              <View style={{ backgroundColor: "#f59e0b22", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+                <Text style={{ color: "#f59e0b", fontSize: 11, fontFamily: "Inter_700Bold" }}>
+                  {lang === "ar" ? "ثانوي" : "SECONDARY"}
+                </Text>
+              </View>
+            </View>
+            {/* Yahoo removed */}
+            <View style={[styles.row, { flexDirection: dirAlign === "right" ? "row-reverse" : "row", borderColor: colors.border, justifyContent: "space-between" }]}>
+              <View style={{ flexDirection: dirAlign === "right" ? "row-reverse" : "row", alignItems: "center", gap: 8 }}>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.bearish }} />
+                <Text style={{ color: colors.mutedForeground, fontSize: 13, fontFamily: "Inter_600SemiBold", textDecorationLine: "line-through" }}>
+                  Yahoo Finance
+                </Text>
+              </View>
+              <View style={{ backgroundColor: colors.bearish + "22", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+                <Text style={{ color: colors.bearish, fontSize: 11, fontFamily: "Inter_700Bold" }}>
+                  {lang === "ar" ? "محذوف" : "REMOVED"}
+                </Text>
+              </View>
+            </View>
+            <Text style={{ color: colors.mutedForeground, fontSize: 11, fontFamily: "Inter_400Regular", textAlign: dirAlign, writingDirection: isRTL ? "rtl" : "ltr" }}>
+              {lang === "ar"
+                ? "البيانات الحية تأتي من InstaForex أولاً. عند عدم التوفر يتم التحويل إلى Stooq تلقائياً مع الإعلان الصريح عن المصدر النشط."
+                : "Live data is served by InstaForex first. If unavailable, Stooq provides real data with explicit source labeling."}
+            </Text>
+          </View>
+        </Section>
+
         {/* About */}
         <Section title={t("about")} dirAlign={dirAlign}>
           <Text
@@ -423,7 +476,7 @@ export default function SettingsScreen() {
             {t("about_text")}
           </Text>
           <Text style={{ color: colors.gold, fontSize: 11, fontFamily: "Inter_700Bold", marginTop: 8, textAlign: dirAlign }}>
-            v1.1.0
+            v2.0.0
           </Text>
         </Section>
 

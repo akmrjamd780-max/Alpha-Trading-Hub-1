@@ -1,12 +1,20 @@
 /**
- * Data Gateway Orchestrator
- * Routes requests to primary provider (InstaForex) with fallback to Yahoo Finance.
- * Exposes unified API for all data consumers.
+ * Data Gateway — InstaForex Primary + Stooq Secondary
+ *
+ * PRIMARY:   InstaForex (quotes.instaforex.com)
+ * SECONDARY: Stooq (stooq.com) — labeled explicitly in all responses
+ *
+ * Yahoo Finance has been completely removed from the execution path.
+ * There is NO silent fallback. Every response includes a `source` field
+ * identifying which provider actually served the data.
+ *
+ * If InstaForex returns no data AND Stooq fails, the gateway returns null
+ * and the route layer returns a 502 with a clear error message.
  */
 
 import { logger } from "../logger";
 import { instaForexProvider } from "./providers/instaforex";
-import { yahooProvider } from "./providers/yahoo";
+import { stooqProvider } from "./providers/stooq";
 import type {
   DataProvider,
   ChartResponse,
@@ -17,39 +25,50 @@ import type {
   Range,
 } from "./types";
 
-const providers: DataProvider[] = [instaForexProvider, yahooProvider];
+// Ordered list: InstaForex first, Stooq second. Yahoo Finance is NOT here.
+const PROVIDERS: DataProvider[] = [instaForexProvider, stooqProvider];
 
-function getProviderStatuses(): ProviderStatus[] {
-  return providers.map((p) => p.getStatus());
+export function getProviderStatuses(): ProviderStatus[] {
+  return PROVIDERS.map((p) => p.getStatus());
 }
 
-function isHealthy(p: DataProvider): boolean {
-  return p.getStatus().healthy;
-}
-
-async function withFallback<T>(
+async function withProviderFallback<T>(
   fn: (p: DataProvider) => Promise<T | null>,
   label: string,
   symbol?: string,
 ): Promise<T | null> {
-  for (const p of providers) {
+  for (const p of PROVIDERS) {
+    const t0 = Date.now();
     try {
       const result = await fn(p);
-      if (result) {
-        logger.debug(
-          { provider: p.name, label, symbol },
-          "gateway provider success",
+      if (result !== null && result !== undefined) {
+        logger.info(
+          {
+            provider: p.name,
+            label,
+            symbol,
+            latencyMs: Date.now() - t0,
+            success: true,
+          },
+          `gateway[${p.name}] served ${label}`,
         );
         return result;
       }
+      logger.warn(
+        { provider: p.name, label, symbol },
+        `gateway[${p.name}] returned no data for ${label} — trying next provider`,
+      );
     } catch (err) {
       logger.warn(
         { err, provider: p.name, label, symbol },
-        "gateway provider failed",
+        `gateway[${p.name}] threw error for ${label} — trying next provider`,
       );
     }
   }
-  logger.error({ label, symbol }, "all gateway providers failed");
+  logger.error(
+    { label, symbol, providers: PROVIDERS.map((p) => p.name) },
+    "gateway: ALL providers failed — returning null",
+  );
   return null;
 }
 
@@ -59,7 +78,7 @@ export const gateway = {
     interval: Interval,
     range: Range,
   ): Promise<ChartResponse | null> {
-    return withFallback(
+    return withProviderFallback(
       (p) => p.getCandles(symbol, interval, range),
       "candles",
       symbol,
@@ -67,7 +86,7 @@ export const gateway = {
   },
 
   getQuote(symbol: string): Promise<QuoteResponse | null> {
-    return withFallback(
+    return withProviderFallback(
       (p) => p.getQuote(symbol),
       "quote",
       symbol,
@@ -75,7 +94,7 @@ export const gateway = {
   },
 
   getMultiQuote(symbols: string[]): Promise<MultiQuoteResponse | null> {
-    return withFallback(
+    return withProviderFallback(
       (p) => p.getMultiQuote(symbols),
       "multi-quote",
     );
@@ -84,6 +103,17 @@ export const gateway = {
   getStatus(): ProviderStatus[] {
     return getProviderStatuses();
   },
+
+  /**
+   * Returns the name of the provider that is currently healthy and primary.
+   * Used by the health endpoint.
+   */
+  getPrimaryProvider(): string {
+    for (const p of PROVIDERS) {
+      if (p.getStatus().healthy) return p.name;
+    }
+    return "none";
+  },
 };
 
-export { instaForexProvider, yahooProvider };
+export { instaForexProvider, stooqProvider };

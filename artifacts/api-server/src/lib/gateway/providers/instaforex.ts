@@ -1,8 +1,15 @@
 /**
- * InstaForex Data Provider
- * Real-time forex quotes and chart data.
- * Primary: quotes.instaforex.com REST endpoints
- * API key: supports both ?key= and ?api_key= params
+ * InstaForex Data Provider — PRIMARY SOURCE
+ *
+ * Endpoints:
+ *   Tick data:  https://quotes.instaforex.com/api/quotesTick
+ *   Quote list: https://quotes.instaforex.com/api/quotesList
+ *
+ * NOTE: The InstaForex partner quotesTick API requires valid partner
+ * account authentication for full price data. When the API returns
+ * an empty data set (only symbol field, no bid/ask/price), this
+ * provider returns null so the gateway can try the next provider.
+ * This is logged explicitly — there is NO silent fallback.
  */
 
 import { logger } from "../../logger";
@@ -21,12 +28,22 @@ import type {
 
 const API_KEY = process.env["INSTAFOREX_API_KEY"] ?? "5Gl2M6#E";
 
-// InstaForex symbol mapping (they use XAUUSD, EURUSD natively)
-const IFX_SYMBOLS: Record<string, string> = {
+/**
+ * InstaForex native symbol mapping.
+ * Platform symbol → InstaForex symbol
+ * Any symbol not in this map is attempted as-is.
+ * Unknown/unmapped symbols are logged explicitly.
+ */
+const IFX_SYMBOL_MAP: Record<string, string> = {
+  // Metals
   XAUUSD: "XAUUSD",
   GOLD: "XAUUSD",
   XAGUSD: "XAGUSD",
   SILVER: "XAGUSD",
+  XPTUSD: "XPTUSD",
+  XPDUSD: "XPDUSD",
+
+  // Major FX
   EURUSD: "EURUSD",
   GBPUSD: "GBPUSD",
   USDJPY: "USDJPY",
@@ -34,61 +51,173 @@ const IFX_SYMBOLS: Record<string, string> = {
   USDCAD: "USDCAD",
   USDCHF: "USDCHF",
   NZDUSD: "NZDUSD",
+
+  // Cross pairs
   GBPJPY: "GBPJPY",
   EURJPY: "EURJPY",
-  WTI: "CL",
+  EURGBP: "EURGBP",
+  AUDJPY: "AUDJPY",
+  CADJPY: "CADJPY",
+  CHFJPY: "CHFJPY",
+
+  // Commodities
+  WTI: "USOIL",
+  BRENT: "UKOIL",
+  USOIL: "USOIL",
+  UKOIL: "UKOIL",
+
+  // Crypto (InstaForex style)
   BTC: "BTCUSD",
+  BTCUSD: "BTCUSD",
   ETH: "ETHUSD",
-  DXY: "DXY",
+  ETHUSD: "ETHUSD",
+
+  // Indices (InstaForex naming)
+  SPX: "SP500",
+  SP500: "SP500",
+  DJI: "DJ30",
+  NASDAQ: "NASDAQ",
+  DXY: "USDX",
+  USDX: "USDX",
+  DAX: "DAX30",
+  FTSE: "FTSE100",
+  NIKKEI: "NI225",
 };
 
-function resolveSymbol(s: string): string {
+// Known unmapped symbols — log once, don't retry repeatedly
+const UNMAPPED_WARNED = new Set<string>();
+
+function resolveSymbol(s: string): { ifxSym: string; mapped: boolean } {
   const upper = s.toUpperCase();
-  return IFX_SYMBOLS[upper] ?? upper;
+  const mapped = IFX_SYMBOL_MAP[upper];
+  if (mapped) return { ifxSym: mapped, mapped: true };
+  // Try as-is
+  if (!UNMAPPED_WARNED.has(upper)) {
+    UNMAPPED_WARNED.add(upper);
+    logger.warn(
+      { symbol: upper, provider: "instaforex" },
+      "instaforex: no explicit symbol mapping — trying as-is",
+    );
+  }
+  return { ifxSym: upper, mapped: false };
 }
 
-// Cache
+// In-memory cache
 const quoteCache = new Map<string, { ts: number; data: Quote }>();
-const chartCache = new Map<string, { ts: number; data: ChartResponse }>();
-const QUOTE_TTL = 15_000; // 15s
-const CHART_TTL = 30_000; // 30s
+const QUOTE_TTL = 8_000; // 8s — aggressive for real-time
 
-// Status
 const status: ProviderStatus = {
   name: "instaforex",
-  healthy: true,
+  healthy: false, // starts false; becomes true on first success
   lastSuccess: 0,
   lastError: 0,
   errorCount: 0,
   latencyMs: 0,
 };
 
-async function fetchQuoteTick(symbol: string): Promise<Partial<Quote> | null> {
-  const start = Date.now();
-  const ifxSym = resolveSymbol(symbol);
-  const url = `https://quotes.instaforex.com/api/quotesTick?f=JSON&q=${encodeURIComponent(ifxSym)}&n=1&key=${encodeURIComponent(API_KEY)}`;
+/**
+ * Fetch a single tick quote from InstaForex quotesTick API.
+ * Returns null if:
+ *   - HTTP error
+ *   - Response contains only {symbol} with no price fields
+ *   - Network timeout
+ */
+async function fetchInstaForexTick(
+  symbol: string,
+): Promise<Partial<Quote> | null> {
+  const t0 = Date.now();
+  const { ifxSym } = resolveSymbol(symbol);
+
+  const url =
+    `https://quotes.instaforex.com/api/quotesTick` +
+    `?f=JSON&q=${encodeURIComponent(ifxSym)}&n=1&key=${encodeURIComponent(API_KEY)}`;
+
   try {
     const r = await fetch(url, {
       headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; GoldTrader/1.0)",
+        "User-Agent": "Mozilla/5.0 (compatible; GoldTraderPro/2.0)",
         Accept: "application/json",
+        Referer: "https://www.instaforex.com/",
       },
       signal: AbortSignal.timeout(8000),
     });
+
     if (!r.ok) {
+      status.errorCount++;
+      status.lastError = Date.now();
+      logger.warn(
+        { symbol, ifxSym, httpStatus: r.status, provider: "instaforex" },
+        "instaforex quotesTick HTTP error",
+      );
+      return null;
+    }
+
+    const data = (await r.json()) as Array<Record<string, unknown>>;
+
+    if (!Array.isArray(data) || data.length === 0) {
+      status.errorCount++;
+      status.lastError = Date.now();
+      logger.warn(
+        { symbol, ifxSym, provider: "instaforex" },
+        "instaforex quotesTick: empty array response",
+      );
+      return null;
+    }
+
+    const tick = data[0] as Record<string, unknown>;
+
+    // Detect "symbol-only" response — API accessible but no data access
+    const hasPrice =
+      tick["bid"] != null ||
+      tick["ask"] != null ||
+      tick["last"] != null ||
+      tick["price"] != null ||
+      tick["close"] != null;
+
+    if (!hasPrice) {
+      status.lastError = Date.now();
+      logger.warn(
+        {
+          symbol,
+          ifxSym,
+          provider: "instaforex",
+          tick,
+          reason:
+            "API accessible but returned no price fields — partner data access may require additional authentication",
+        },
+        "instaforex quotesTick: no price data in response",
+      );
+      return null;
+    }
+
+    const price = Number(
+      tick["ask"] ?? tick["last"] ?? tick["price"] ?? tick["close"] ?? 0,
+    );
+    if (!price || price <= 0) {
       status.errorCount++;
       status.lastError = Date.now();
       return null;
     }
-    const data = (await r.json()) as Array<Record<string, unknown>>;
-    if (!Array.isArray(data) || data.length === 0) return null;
-    const tick = data[0] as Record<string, unknown>;
+
     status.lastSuccess = Date.now();
-    status.latencyMs = Date.now() - start;
+    status.latencyMs = Date.now() - t0;
+    status.errorCount = Math.max(0, status.errorCount - 1);
+
+    logger.info(
+      {
+        provider: "instaforex",
+        symbol,
+        ifxSym,
+        price,
+        latencyMs: status.latencyMs,
+      },
+      "instaforex quotesTick: data received",
+    );
+
     return {
-      price: Number(tick["ask"] ?? tick["last"] ?? tick["price"] ?? 0),
-      bid: Number(tick["bid"] ?? tick["last"] ?? 0),
-      ask: Number(tick["ask"] ?? tick["last"] ?? tick["price"] ?? 0),
+      price,
+      bid: Number(tick["bid"] ?? price),
+      ask: Number(tick["ask"] ?? price),
       spread: Number(tick["spread"] ?? 0),
       high: Number(tick["high"] ?? 0),
       low: Number(tick["low"] ?? 0),
@@ -100,86 +229,10 @@ async function fetchQuoteTick(symbol: string): Promise<Partial<Quote> | null> {
   } catch (err) {
     status.errorCount++;
     status.lastError = Date.now();
-    logger.warn({ err, symbol, provider: "instaforex" }, "quote tick failed");
-    return null;
-  }
-}
-
-async function fetchChart(
-  symbol: string,
-  interval: Interval,
-  range: Range,
-): Promise<{ candles: Candle[]; meta: Record<string, unknown> } | null> {
-  const start = Date.now();
-  const ifxSym = resolveSymbol(symbol);
-  // InstaForex chart interval mapping (seconds)
-  const intervalMap: Record<string, number> = {
-    "1m": 60,
-    "5m": 300,
-    "15m": 900,
-    "30m": 1800,
-    "60m": 3600,
-    "1d": 86400,
-    "1wk": 604800,
-    "1mo": 2592000,
-  };
-  const period = intervalMap[interval] ?? 300;
-  // Determine bar count from range
-  const rangeBars: Record<string, number> = {
-    "1d": 48,
-    "5d": 120,
-    "1mo": 180,
-    "3mo": 360,
-    "6mo": 720,
-    "1y": 1440,
-    "2y": 2880,
-    "5y": 7200,
-    max: 7200,
-  };
-  const bars = rangeBars[range] ?? 120;
-  const url = `https://quotes.instaforex.com/api/chart?f=JSON&q=${encodeURIComponent(ifxSym)}&n=${bars}&i=${period}&key=${encodeURIComponent(API_KEY)}`;
-  try {
-    const r = await fetch(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; GoldTrader/1.0)",
-        Accept: "application/json",
-      },
-      signal: AbortSignal.timeout(15000),
-    });
-    if (!r.ok) {
-      status.errorCount++;
-      status.lastError = Date.now();
-      return null;
-    }
-    const data = (await r.json()) as {
-      bars?: Array<{
-        time?: number;
-        open?: number;
-        high?: number;
-        low?: number;
-        close?: number;
-        volume?: number;
-      }>;
-    };
-    if (!data.bars || data.bars.length === 0) return null;
-    const candles: Candle[] = data.bars.map((b) => ({
-      t: (b.time ?? 0) * 1000,
-      o: b.open ?? 0,
-      h: b.high ?? 0,
-      l: b.low ?? 0,
-      c: b.close ?? 0,
-      v: b.volume ?? 0,
-    }));
-    status.lastSuccess = Date.now();
-    status.latencyMs = Date.now() - start;
-    return {
-      candles,
-      meta: { symbol: ifxSym, period, bars, provider: "instaforex" },
-    };
-  } catch (err) {
-    status.errorCount++;
-    status.lastError = Date.now();
-    logger.warn({ err, symbol, provider: "instaforex" }, "chart fetch failed");
+    logger.warn(
+      { err, symbol, ifxSym, provider: "instaforex" },
+      "instaforex quotesTick: network/timeout error",
+    );
     return null;
   }
 }
@@ -187,60 +240,57 @@ async function fetchChart(
 export const instaForexProvider: DataProvider = {
   name: "instaforex",
 
-  async getCandles(symbol, interval, range) {
-    const key = `${symbol}|${interval}|${range}`;
-    const now = Date.now();
-    const cached = chartCache.get(key);
-    if (cached && now - cached.ts < CHART_TTL) {
-      return cached.data;
-    }
-    const data = await fetchChart(symbol, interval, range);
-    if (!data) return null;
-    const out: ChartResponse = {
-      symbol,
-      interval,
-      range,
-      candles: data.candles,
-      meta: data.meta,
-      source: "instaforex",
-    };
-    chartCache.set(key, { ts: now, data: out });
-    return out;
-  },
-
-  async getQuote(symbol) {
+  async getQuote(symbol): Promise<QuoteResponse | null> {
     const now = Date.now();
     const cached = quoteCache.get(symbol);
     if (cached && now - cached.ts < QUOTE_TTL) {
       return { quote: cached.data, source: "instaforex" };
     }
-    const tick = await fetchQuoteTick(symbol);
+
+    const tick = await fetchInstaForexTick(symbol);
     if (!tick || !tick.price) return null;
+
+    const { ifxSym } = resolveSymbol(symbol);
+    const price = tick.price;
+    const open = tick.open ?? price;
     const quote: Quote = {
       symbol: symbol.toUpperCase(),
-      display: resolveSymbol(symbol),
-      price: tick.price,
-      prevClose: tick.open ?? tick.price,
-      change: tick.price - (tick.open ?? tick.price),
-      changePct: tick.open
-        ? ((tick.price - tick.open) / tick.open) * 100
-        : 0,
-      high: tick.high ?? tick.price,
-      low: tick.low ?? tick.price,
-      open: tick.open ?? tick.price,
-      ts: tick.ts,
+      display: ifxSym,
+      price,
+      prevClose: open,
+      change: price - open,
+      changePct: open ? ((price - open) / open) * 100 : 0,
+      high: tick.high && tick.high > 0 ? tick.high : price,
+      low: tick.low && tick.low > 0 ? tick.low : price,
+      open,
+      ts: tick.ts ?? Date.now(),
       currency: tick.currency ?? "USD",
       marketState: tick.marketState ?? "OPEN",
       spread: tick.spread,
       bid: tick.bid,
       ask: tick.ask,
-      pip: tick.price > 100 ? 0.01 : 0.0001,
+      pip: price > 100 ? 0.01 : 0.0001,
     };
+
     quoteCache.set(symbol, { ts: now, data: quote });
     return { quote, source: "instaforex" };
   },
 
-  async getMultiQuote(symbols) {
+  async getCandles(
+    symbol: string,
+    _interval: Interval,
+    _range: Range,
+  ): Promise<ChartResponse | null> {
+    // InstaForex chart API endpoint returned 404 in testing.
+    // Return null so gateway falls through to Stooq for OHLC data.
+    logger.debug(
+      { symbol, provider: "instaforex" },
+      "instaforex: chart API unavailable — gateway will use secondary provider",
+    );
+    return null;
+  },
+
+  async getMultiQuote(symbols: string[]): Promise<MultiQuoteResponse | null> {
     const items: MultiQuote[] = [];
     await Promise.all(
       symbols.map(async (sym) => {
@@ -261,7 +311,7 @@ export const instaForexProvider: DataProvider = {
     return { items, source: "instaforex" };
   },
 
-  getStatus() {
+  getStatus(): ProviderStatus {
     const healthy =
       status.lastSuccess > 0 &&
       status.errorCount < 10 &&

@@ -109,6 +109,19 @@ export default function MarketsScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.gold} />
         }
       >
+        {/* Data Source Badge */}
+        {goldQuote.data?.source ? (
+          <View style={[styles.sourceBadge, { flexDirection: isRTL ? "row-reverse" : "row" }]}>
+            <View style={[styles.sourceDot, { backgroundColor: goldQuote.data.source === "instaforex" ? "#22c55e" : "#f59e0b" }]} />
+            <Text style={[styles.sourceText, { color: colors.mutedForeground }]}>
+              {t("data_source_active")}:{" "}
+              <Text style={{ color: goldQuote.data.source === "instaforex" ? "#22c55e" : "#f59e0b", fontFamily: "Inter_700Bold" }}>
+                {goldQuote.data.source === "instaforex" ? "InstaForex" : "Stooq"}
+              </Text>
+            </Text>
+          </View>
+        ) : null}
+
         {/* Hero */}
         <LinearGradient
           colors={["#1a1505", "#2a2008", "#13182966"]}
@@ -314,6 +327,9 @@ export default function MarketsScreen() {
 }
 
 const styles = StyleSheet.create({
+  sourceBadge: { alignItems: "center", gap: 6, marginBottom: -4 },
+  sourceDot: { width: 7, height: 7, borderRadius: 4 },
+  sourceText: { fontSize: 11, fontFamily: "Inter_500Medium" },
   hero: { padding: 18, borderWidth: 1, gap: 14 },
   heroRow: { justifyContent: "space-between", alignItems: "flex-end" },
   heroSub: { fontSize: 11, fontFamily: "Inter_700Bold", letterSpacing: 1.5 },
