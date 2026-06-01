@@ -1,15 +1,17 @@
 /**
  * WebSocket Streaming Server
- * Real-time price streaming with auto-reconnect, heartbeat, and connection monitoring.
+ * Shares the same HTTP server — no extra port needed.
+ * Real-time price streaming with heartbeat + auto-reconnect.
  */
 
+import type { Server } from "node:http";
 import type { WebSocket as WebSocketType } from "ws";
 import { WebSocketServer } from "ws";
 import { logger } from "../lib/logger";
 import { gateway } from "../lib/gateway";
 
-const HEARTBEAT_INTERVAL = 30_000; // 30s
-const STREAM_INTERVAL = 5_000; // 5s price updates
+const HEARTBEAT_INTERVAL = 30_000;
+const STREAM_INTERVAL = 5_000;
 
 interface ClientState {
   ws: WebSocketType;
@@ -20,11 +22,12 @@ interface ClientState {
 
 const clients = new Map<string, ClientState>();
 let clientIdCounter = 0;
+let streamingInterval: ReturnType<typeof setInterval> | null = null;
+let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 
-// Start WebSocket server on a port (typically adjacent to HTTP port)
-export function startWebSocketServer(port: number): void {
-  const wss = new WebSocketServer({ port });
-  logger.info({ wsPort: port }, "WebSocket server started");
+export function attachWebSocketToServer(httpServer: Server): void {
+  const wss = new WebSocketServer({ server: httpServer });
+  logger.info("WebSocket attached to HTTP server");
 
   wss.on("connection", (ws) => {
     const id = `ws-${++clientIdCounter}`;
@@ -73,7 +76,7 @@ export function startWebSocketServer(port: number): void {
           }
         }
       } catch {
-        // ignore malformed messages
+        // ignore malformed
       }
     });
 
@@ -87,8 +90,8 @@ export function startWebSocketServer(port: number): void {
     });
   });
 
-  // Heartbeat checker
-  setInterval(() => {
+  // Heartbeat
+  heartbeatInterval = setInterval(() => {
     for (const [id, state] of clients) {
       if (!state.isAlive) {
         state.ws.terminate();
@@ -106,7 +109,7 @@ export function startWebSocketServer(port: number): void {
   // Price broadcaster
   let lastQuotes: Record<string, number> = {};
 
-  setInterval(async () => {
+  streamingInterval = setInterval(async () => {
     const allSymbols = new Set<string>();
     for (const state of clients.values()) {
       for (const sym of state.subscribedSymbols) allSymbols.add(sym);
